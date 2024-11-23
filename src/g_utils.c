@@ -1602,6 +1602,11 @@ qbool isCTF(void)
 #endif
 }
 
+qbool isRCTF(void)
+{
+	return isCTF() && k_rctf;
+}
+
 qbool isUnknown(void)
 {
 #ifdef CTF_RELOADMAP

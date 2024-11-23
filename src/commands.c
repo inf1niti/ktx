@@ -69,6 +69,8 @@ void hookcrhook(void);
 void noga(void);
 void mctf(void);
 void CTFBasedSpawn(void);
+void staticrunes(void);
+void ringstealth(void);
 // } CTF
 void FragsDown(void);
 void FragsUp(void);
@@ -535,6 +537,8 @@ const char CD_NODESC[] = "no desc";
 #define CD_HOOKCLASSIC			"switch Hook style settings: Classic Hook (CTF)"
 #define CD_HOOKCRHOOK			"switch Hook style settings: crhook (CTF)"
 #define CD_NORUNES			"toggle runes (CTF)"
+#define CD_STATICRUNES		"toggle static runes"
+#define CD_RINGSTEALTH		"toggle ring stealth effects"
 #define CD_NOGA				"toggle green armor on spawn (CTF)"
 #define CD_MCTF				"disable hook+runes (CTF)"
 #define CD_CTFBASEDSPAWN	"spawn players on the base (CTF)"
@@ -813,6 +817,7 @@ cmd_t cmds[] =
 	{ "10on10", 					DEF(UserMode), 					5, 			CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS,									CD_10ON10 },
 	{ "ffa", 						DEF(UserMode), 					6, 			CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_FFA },
 	{ "ctf", 						DEF(UserMode), 					7, 			CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_CTF },
+	{ "rctf", 						DEF(UserMode), 					18, 		CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_CTF },
 	{ "hoonymode", 					DEF(UserMode), 					8, 			CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_1ON1HM },
 	{ "blitz2v2", 					DEF(UserMode), 					9, 			CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_2ON2BLITZ },
 	{ "blitz4v4", 					DEF(UserMode), 					10, 		CF_PLAYER | CF_SPC_ADMIN | CF_PARAMS, 									CD_4ON4BLITZ },
@@ -914,6 +919,8 @@ cmd_t cmds[] =
 	{ "tossrune", 					TossRune, 						0, 			CF_PLAYER | CF_MATCHLESS, 												CD_TOSSRUNE },
 	{ "tossflag", 					TossFlag, 						0, 			CF_PLAYER | CF_MATCHLESS, 												CD_TOSSFLAG },
 	{ "nohook", 					nohook, 						0, 			CF_PLAYER | CF_MATCHLESS, 											CD_NOHOOK },
+	{ "staticrunes", 				staticrunes, 					0, 			CF_PLAYER | CF_SPC_ADMIN | CF_MATCHLESS, 								CD_STATICRUNES },
+	{ "ringstealth", 				ringstealth, 					0, 			CF_PLAYER | CF_SPC_ADMIN | CF_MATCHLESS, 								CD_RINGSTEALTH },
 	{ "hook_smooth", 				hooksmooth, 					0, 			CF_PLAYER | CF_MATCHLESS, 											CD_HOOKSMOOTH },
 	{ "hook_fast", 					hookfast, 					0, 			CF_PLAYER | CF_MATCHLESS, 											CD_HOOKFAST },
 	{ "hook_classic", 				hookclassic, 					0, 			CF_PLAYER | CF_MATCHLESS, 											CD_HOOKCLASSIC },
@@ -3306,9 +3313,12 @@ void ShowRules(void)
 	{
 		G_sprint(self, 2, "Server is in CTF mode.\n"
 					"Additional commands/impulses:\n"
-					"impulse 22 : Grappling Hook\n"
-					"tossrune   : Toss your current rune\n"
-					"tossflag   : Toss carried flag\n"
+					"impulse 22 : Grappling Hook\n");
+		if (!cvar("k_static_runes"))
+		{
+			G_sprint(self, 2, "tossrune   : Toss your current rune\n");
+		}
+		G_sprint(self, 2, "tossflag   : Toss carried flag\n"
 					"flagstatus : Displays flag information\n");
 	}
 	else if (isFFA())
@@ -4179,6 +4189,11 @@ const char common_um_init[] =
 	"k_clan_arena 0\n"				// disable Clan Arena by default
 	"k_rocketarena 0\n"				// disable Rocket Arena by default
 	"k_race 0\n"					// disable Race by default
+	"k_rctf 0\n"					// disable Revival CTF by default
+	"k_static_runes 0\n"				// static-location runes off by default
+	"k_ring_stealth 0\n"			// ring stealth effects off by default
+	"k_static_rune_str_damage 1.5\n"	// static rune strength damage multiplier
+	"k_static_rune_res_damage 0.67\n"	// static rune resistance damage multiplier
 	"k_hoonymode 0\n"				// disable HoonyMode by default
 	"k_freshteams 0\n"				// disable FreshTeams by default
 	"k_nosweep 0\n"					// disable nosweep by default
@@ -4444,7 +4459,7 @@ const char ctf_um_init[] =
 	"timelimit 10\n"
 	"teamplay 4\n"
 	"deathmatch 3\n"
-	"k_dis 2\n"						// no out of water discharges in ctf
+	"k_dis 2\n"					// no out of water discharges in ctf
 	"k_pow 1\n"
 	"k_spw 1\n"
 	"k_membercount 0\n"
@@ -4457,6 +4472,41 @@ const char ctf_um_init[] =
 	"k_ctf_hook 0\n"				// hook off
 	"k_ctf_runes 0\n"				// runes off
 	"k_ctf_ga 1\n"					// green armor on
+;
+
+const char rctf_um_init[] =
+	"sv_loadentfiles_dir ctf\n"
+	"pm_airstep 0\n"
+	"coop 0\n"
+	"k_matchless 0\n"
+	"maxclients 16\n"
+	"k_maxclients 16\n"
+	"timelimit 20\n"
+	"teamplay 2\n"
+	"deathmatch 1\n"
+	"k_dis 2\n"					// no out of water discharges in ctf
+	"k_pow 1\n"
+	"k_pow_q 1\n"				// quad on
+	"k_pow_p 1\n"				// pent on
+	"k_pow_r 1\n"				// ring on
+	"k_pow_s 1\n"				// suit on
+	"k_pow_min_players 0\n"		// do not inherit matchless powerup player-count gates
+	"k_spw 1\n"
+	"k_membercount 0\n"
+	"k_lockmin 1\n"
+	"k_lockmax 2\n"
+	"k_overtime 1\n"
+	"k_exttime 5\n"
+	"k_mode 4\n"
+	"k_rctf 1\n"
+	"k_static_runes 1\n"
+	"k_ring_stealth 1\n"
+	"k_static_rune_str_damage 1.5\n"
+	"k_static_rune_res_damage 0.67\n"
+	"k_ctf_based_spawn 3\n"			// mixed CTF spawn weighting
+	"k_ctf_hook 1\n"				// hook on
+	"k_ctf_runes 1\n"				// runes on
+	"k_ctf_ga 0\n"					// green armor off
 ;
 
 const char wipeout_um_init[] =
@@ -4551,6 +4601,7 @@ usermode um_list[] =
 	{ "wipeout", 	"Wipeout", 				wipeout_um_init, 	UM_4ON4,	 0 },
 	{ "ca", 		"Clan Arena", 			carena_um_init, 	UM_4ON4,	 0 },
 	{ "tot", 		"Tribe of Tjernobyl", 			tot_um_init, 	UM_FFA,	 0 },
+	{ "rctf", 		"rctf", 				rctf_um_init, 		UM_CTF, 	 0 },
 };
 
 int um_cnt = sizeof(um_list) / sizeof(um_list[0]);
@@ -4694,7 +4745,7 @@ void UserMode(float umode)
 		um = "matchless"; // use configs/usermodes/matchless instead of configs/usermodes/ffa in matchless mode
 	}
 
-	if (streq(um, "ctf") && bots_enabled() && !sv_invoked)
+	if ((streq(um, "ctf") || streq(um, "rctf")) && bots_enabled() && !sv_invoked)
 	{
 		if (bots_enabled())
 		{

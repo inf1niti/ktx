@@ -62,6 +62,7 @@ int k_matchLess_idle_time;
 int k_matchLess_idle_warn;
 gameType_t k_mode;				// game type: DUEL, TP, FFA
 int k_lastvotedmap;				// last voted map, used for agree command?
+int k_rctf;						// Revival CTF ruleset flag
 
 // { CTF
 int k_ctf_custom_models;		// if server has flag/grapple models you can enable them here

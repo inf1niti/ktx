@@ -375,6 +375,7 @@ qbool isDuel(void);
 qbool isTeam(void);
 qbool isFFA(void);
 qbool isCTF(void);
+qbool isRCTF(void);
 qbool isUnknown(void);
 int tp_num(void);
 int GetUserID(gedict_t *p);
@@ -614,12 +615,21 @@ void teleport_player(gedict_t *player, vec3_t origin, vec3_t angles, int flags);
 void DropRune(void);
 void SpawnRunes(qbool yes);
 void TossRune(void);
+void StaticRunesSpawnAll(qbool delay);
+void ClearAllRuneEffects(void);
+void ClearRuneEffect(gedict_t *player);
+void RemoveRuneEnts(void);
+float RuneStrMultiplier(gedict_t *player);
+float RuneResMultiplier(gedict_t *player);
 void ResistanceSound(gedict_t *player);
 void HasteSound(gedict_t *player);
 void RegenerationSound(gedict_t *player);
 
 // ctf.c
+#define RING_STEALTH_ALPHA 0.35
 void PlayerDropFlag(gedict_t *player, qbool tossed);
+qbool RingStealthActive(gedict_t *player);
+void PlayerSetRingStealthAlpha(gedict_t *player, qbool active);
 void RegenFlags(qbool yes);
 void AddHook(qbool yes);
 void CTF_Obituary(gedict_t *targ, gedict_t *attacker);
@@ -1064,6 +1074,7 @@ extern int k_matchLess_idle_warn;
 
 extern gameType_t k_mode;   // game type: DUEL, TP, FFA
 extern int k_lastvotedmap;	// last voted map, used for agree command?
+extern int k_rctf;			// Revival CTF ruleset flag
 // { CTF
 extern int k_ctf_custom_models;	// use or not custom models
 extern int k_allowed_free_modes; // reflect appropriate cvar - but changed only at map load

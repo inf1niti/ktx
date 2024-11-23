@@ -75,6 +75,7 @@ void spawn_item_flag(void)
 	self->cnt2 = 0.0;
 	VectorCopy(self->s.v.angles, self->mangle);
 	self->s.v.effects = (int)self->s.v.effects | EF_DIMLIGHT;
+	ExtFieldSetAlpha(self, 1);
 
 	if (!droptofloor(self))
 	{
@@ -225,6 +226,7 @@ void RegenFlag(gedict_t *flag)
 	flag->s.v.nextthink = g_globalvars.time + 0.2;
 	flag->s.v.groundentity = EDICT_TO_PROG(world);
 	flag->touch = (func_t) FlagTouch;
+	ExtFieldSetAlpha(flag, 1);
 }
 
 // show/hide flag
@@ -299,6 +301,14 @@ void FlagThink(void)
 	}
 
 	self->cnt2 += 0.1;
+	if (self->cnt == FLAG_CARRIED)
+	{
+		gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
+		if (owner && owner != world)
+		{
+			PlayerSetRingStealthAlpha(owner, RingStealthActive(owner));
+		}
+	}
 }
 
 void FlagTouch(void)
@@ -345,6 +355,7 @@ void FlagTouch(void)
 				gedict_t *cflag = NULL;
 
 				// capture
+				PlayerSetRingStealthAlpha(other, false);
 				other->ctf_flag -= ((int)other->ctf_flag & CTF_FLAG);
 				other->s.v.effects -= ((int)other->s.v.effects & (EF_FLAG1 | EF_FLAG2));
 
@@ -475,6 +486,7 @@ void FlagTouch(void)
 		owner->s.v.effects = (int)owner->s.v.effects | EF_FLAG1;
 	}
 	setmodel(self, "");
+	PlayerSetRingStealthAlpha(owner, RingStealthActive(owner));
 }
 
 void FlagResetOwner(void)
@@ -516,10 +528,43 @@ void PlayerDropFlag(gedict_t *player, qbool tossed)
 	}
 }
 
+qbool RingStealthActive(gedict_t *player)
+{
+	return player && cvar("k_ring_stealth") && ((int)player->s.v.items & IT_INVISIBILITY);
+}
+
+void PlayerSetRingStealthAlpha(gedict_t *player, qbool active)
+{
+	int flag_effect;
+
+	if (!player || (player == world))
+	{
+		return;
+	}
+
+	if (player->ctf_flag & CTF_FLAG)
+	{
+		if (streq(getteam(player), "red"))
+		{
+			flag_effect = EF_FLAG2;
+		}
+		else
+		{
+			flag_effect = EF_FLAG1;
+		}
+
+		player->s.v.effects = (int)player->s.v.effects | flag_effect;
+	}
+
+	ExtFieldSetAlpha(player, (active && (player->ctf_flag & CTF_FLAG)) ? RING_STEALTH_ALPHA : 1);
+}
+
 void DropFlag(gedict_t *flag, qbool tossed)
 {
 	gedict_t *p = PROG_TO_EDICT(flag->s.v.owner);
 	gedict_t *p1;
+
+	PlayerSetRingStealthAlpha(p, false);
 
 	p->ctf_flag -= (p->ctf_flag & CTF_FLAG);
 	p->s.v.effects -= ((int)p->s.v.effects & ( EF_FLAG1 | EF_FLAG2));
@@ -554,6 +599,7 @@ void DropFlag(gedict_t *flag, qbool tossed)
 	flag->s.v.movetype = MOVETYPE_TOSS;
 	setmodel(flag, flag->mdl);
 	setsize(flag, -16, -16, 0, 16, 16, 74);
+	ExtFieldSetAlpha(flag, 1);
 	flag->super_time = g_globalvars.time + FLAG_RETURN_TIME;
 	if (tossed)
 	{
@@ -740,8 +786,8 @@ void norunes(void)
 	// In matchless mode, toggling runes normally won't do anything since match is already in progress. Call this to handle this scenario.
 	if (k_matchLess)
 	{
-		// If a player is carrying a rune when runes are disabled, get rid of it
-		if (!cvar("k_ctf_runes"))
+		// If a player is carrying a classic rune when runes are disabled, get rid of it
+		if (!cvar("k_static_runes") && !cvar("k_ctf_runes"))
 		{
 			gedict_t *p;
 			for (p = world; (p = find_plr(p));)
@@ -751,7 +797,10 @@ void norunes(void)
 			}
 		}
 
-		SpawnRunes(cvar("k_ctf_runes")); // Toggle runes
+		if (!cvar("k_static_runes"))
+		{
+			SpawnRunes(cvar("k_ctf_runes")); // Toggle classic runes
+		}
 	}
 }
 
@@ -802,6 +851,54 @@ void noga(void)
 	cvar_toggle_msg(self, "k_ctf_ga", redtext("green armor"));
 }
 
+void staticrunes(void)
+{
+	if (match_in_progress && !k_matchLess)
+	{
+		return;
+	}
+
+	cvar_toggle_msg(self, "k_static_runes", redtext("static runes"));
+
+	if (!match_in_progress || k_matchLess)
+	{
+		ClearAllRuneEffects();
+
+		if (cvar("k_static_runes"))
+		{
+			StaticRunesSpawnAll(false);
+		}
+		else
+		{
+			RemoveRuneEnts();
+			if (isCTF() && cvar("k_ctf_runes"))
+			{
+				SpawnRunes(cvar("k_ctf_runes"));
+			}
+		}
+	}
+}
+
+void ringstealth(void)
+{
+	gedict_t *p;
+
+	if (match_in_progress && !k_matchLess)
+	{
+		return;
+	}
+
+	cvar_toggle_msg(self, "k_ring_stealth", redtext("ring stealth"));
+
+	for (p = world; (p = find_plr(p));)
+	{
+		if (p->ctf_flag & CTF_FLAG)
+		{
+			PlayerSetRingStealthAlpha(p, RingStealthActive(p));
+		}
+	}
+}
+
 void mctf(void)
 {
 	if (match_in_progress && !k_matchLess)
@@ -830,8 +927,8 @@ void mctf(void)
 	// In matchless mode, toggling runes and hook normally won't do anything since match is already in progress. Call this to handle this scenario.
 	if (k_matchLess)
 	{
-		// If a player is carrying a rune when runes are disabled, get rid of it
-		if (!cvar("k_ctf_runes"))
+		// If a player is carrying a classic rune when runes are disabled, get rid of it
+		if (!cvar("k_static_runes") && !cvar("k_ctf_runes"))
 		{
 			gedict_t *p;
 			for (p = world; (p = find_plr(p));)
@@ -841,7 +938,10 @@ void mctf(void)
 			}
 		}
 
-		SpawnRunes(0);
+		if (!cvar("k_static_runes"))
+		{
+			SpawnRunes(0);
+		}
 		AddHook(false);
 	}
 }

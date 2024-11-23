@@ -75,11 +75,11 @@ static qbool RocketSafe(void)
 		{
 			if (self->ctf_flag & CTF_RUNE_STR)
 			{
-				splash_damage = splash_damage * (cvar("k_ctf_rune_power_str") / 2) + 1;
+				splash_damage *= RuneStrMultiplier(self);
 			}
 			else if (self->ctf_flag & CTF_RUNE_RES)
 			{
-				splash_damage = splash_damage / (cvar("k_ctf_rune_power_res") / 2) + 1;
+				splash_damage *= RuneResMultiplier(self);
 			}
 		}
 	}

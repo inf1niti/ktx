@@ -4,11 +4,197 @@
 
 #include "g_local.h"
 
+#define STATIC_RUNE_DELAY_TIME   30
+#define STATIC_RUNE_DURATION     60
+#define STATIC_RUNE_RESPAWN_TIME 120
+
+#define RUNE_SPAWN_RES          "item_rune_res"
+#define RUNE_SPAWN_STR          "item_rune_str"
+#define RUNE_SPAWN_HST          "item_rune_hst"
+#define RUNE_SPAWN_RGN          "item_rune_rgn"
+
 void RegenLostRot(void);
 void RuneRespawn(void);
 void RuneTouch(void);
 void RuneResetOwner(void);
 char* GetRuneSpawnName(void);
+float RuneBaseMultiplier(char *cvar_name);
+void StaticRunesSpawnByType(int runeflags, char *className, int delay);
+void StaticRunesPlaceRune(vec3_t origin, int runeflags);
+void StaticRuneScheduleSpawn(vec3_t origin, int runeflags, int delay);
+void StaticRuneTouch(void);
+void StaticRuneRespawn(void);
+void DoDropRune(int rune, qbool on_respawn);
+void DoTossRune(int rune);
+
+float RuneBaseMultiplier(char *cvar_name)
+{
+	return (cvar(cvar_name) / 2) + 1;
+}
+
+float RuneStrMultiplier(gedict_t *player)
+{
+	if (!(player->ctf_flag & CTF_RUNE_STR))
+	{
+		return 1;
+	}
+
+	return cvar("k_static_runes") ? cvar("k_static_rune_str_damage")
+			: RuneBaseMultiplier("k_ctf_rune_power_str");
+}
+
+float RuneResMultiplier(gedict_t *player)
+{
+	if (!(player->ctf_flag & CTF_RUNE_RES))
+	{
+		return 1;
+	}
+
+	return cvar("k_static_runes") ? cvar("k_static_rune_res_damage")
+			: 1 / RuneBaseMultiplier("k_ctf_rune_power_res");
+}
+
+void StaticRunesSpawnAll(qbool delay)
+{
+	int delayTime = delay ? STATIC_RUNE_DELAY_TIME : 0;
+
+	RemoveRuneEnts();
+
+	StaticRunesSpawnByType(CTF_RUNE_RES, RUNE_SPAWN_RES, delayTime);
+	StaticRunesSpawnByType(CTF_RUNE_STR, RUNE_SPAWN_STR, delayTime);
+	StaticRunesSpawnByType(CTF_RUNE_HST, RUNE_SPAWN_HST, delayTime);
+	StaticRunesSpawnByType(CTF_RUNE_RGN, RUNE_SPAWN_RGN, delayTime);
+}
+
+void ClearAllRuneEffects(void)
+{
+	gedict_t *p;
+
+	for (p = world; (p = find_plr(p));)
+	{
+		ClearRuneEffect(p);
+	}
+}
+
+void ClearRuneEffect(gedict_t *player)
+{
+	if (!(player->ctf_flag & CTF_RUNE_MASK))
+	{
+		return;
+	}
+
+	if (player->ctf_flag & CTF_RUNE_RES)
+	{
+		player->ps.res_time += g_globalvars.time - player->rune_pickup_time;
+	}
+	else if (player->ctf_flag & CTF_RUNE_STR)
+	{
+		player->ps.str_time += g_globalvars.time - player->rune_pickup_time;
+	}
+	else if (player->ctf_flag & CTF_RUNE_HST)
+	{
+		player->ps.hst_time += g_globalvars.time - player->rune_pickup_time;
+		player->maxspeed = cvar("sv_maxspeed");
+	}
+	else if (player->ctf_flag & CTF_RUNE_RGN)
+	{
+		player->ps.rgn_time += g_globalvars.time - player->rune_pickup_time;
+	}
+
+	player->ctf_flag &= ~CTF_RUNE_MASK;
+	player->rune_effect_finished = 0;
+	cl_refresh_plus_scores(player);
+
+	if (ISLIVE(player))
+	{
+		G_sprint(player, 1, "Your rune effect has worn off.\n");
+	}
+}
+
+void RemoveRuneEnts(void)
+{
+	gedict_t *e;
+
+	for (e = world; (e = find(e, FOFCLSN, "rune"));)
+	{
+		ent_remove(e);
+	}
+
+	for (e = world; (e = find(e, FOFCLSN, "rune_timer"));)
+	{
+		ent_remove(e);
+	}
+}
+
+void StaticRunesSpawnByType(int runeflags, char *className, int delay)
+{
+	gedict_t *runeSpawnPoint;
+
+	for (runeSpawnPoint = world; (runeSpawnPoint = ez_find(runeSpawnPoint, className));)
+	{
+		if (delay > 0)
+		{
+			StaticRuneScheduleSpawn(runeSpawnPoint->s.v.origin, runeflags, delay);
+		}
+		else
+		{
+			StaticRunesPlaceRune(runeSpawnPoint->s.v.origin, runeflags);
+		}
+	}
+}
+
+void StaticRunesPlaceRune(vec3_t origin, int runeflags)
+{
+	gedict_t *rune = spawn();
+
+	rune->classname = "rune";
+	rune->ctf_flag = runeflags;
+	rune->s.v.flags = FL_ITEM;
+	rune->s.v.solid = SOLID_TRIGGER;
+	rune->s.v.movetype = MOVETYPE_NONE;
+
+	setorigin(rune, origin[0], origin[1], origin[2]);
+	SetVector(rune->s.v.velocity, 0, 0, 0);
+	VectorCopy(origin, rune->rune_spawn_origin);
+
+	if (runeflags & CTF_RUNE_RES)
+	{
+		setmodel(rune, "progs/end1.mdl");
+	}
+	else if (runeflags & CTF_RUNE_STR)
+	{
+		setmodel(rune, "progs/end2.mdl");
+	}
+	else if (runeflags & CTF_RUNE_HST)
+	{
+		setmodel(rune, "progs/end3.mdl");
+	}
+	else if (runeflags & CTF_RUNE_RGN)
+	{
+		setmodel(rune, "progs/end4.mdl");
+	}
+
+	setsize(rune, -16, -16, 0, 16, 16, 56);
+	rune->touch = (func_t) StaticRuneTouch;
+	sound(rune, CHAN_VOICE, "items/itembk2.wav", 1, ATTN_NORM);
+}
+
+void StaticRuneScheduleSpawn(vec3_t origin, int runeflags, int delay)
+{
+	gedict_t *timer = spawn();
+
+	timer->classname = "rune_timer";
+	timer->s.v.nextthink = g_globalvars.time + delay;
+	timer->think = (func_t) StaticRuneRespawn;
+	timer->ctf_flag = runeflags;
+	VectorCopy(origin, timer->rune_spawn_origin);
+}
+
+void StaticRuneRespawn(void)
+{
+	StaticRunesPlaceRune(self->rune_spawn_origin, self->ctf_flag);
+	ent_remove(self);
+}
 
 void DoDropRune(int rune, qbool on_respawn)
 {
@@ -178,6 +364,11 @@ void DropRune(void)
 
 void TossRune(void)
 {
+	if (cvar("k_static_runes"))
+	{
+		return;
+	}
+
 	if (self->ctf_flag & CTF_RUNE_RES)
 	{
 		DoTossRune( CTF_RUNE_RES);
@@ -319,6 +510,67 @@ void RuneTouch(void)
 	ent_remove(self);
 }
 
+void StaticRuneTouch(void)
+{
+	if (other->ct != ctPlayer)
+	{
+		return;
+	}
+
+	if (ISDEAD(other))
+	{
+		return;
+	}
+
+	if (!k_practice && match_in_progress != 2)
+	{
+		return;
+	}
+
+	if (other->ctf_flag & CTF_RUNE_MASK)
+	{
+		if (g_globalvars.time > other->rune_notify_time)
+		{
+			other->rune_notify_time = g_globalvars.time + 10;
+			G_sprint(other, 1, "You already have a rune.\n");
+		}
+
+		return;
+	}
+
+	other->ctf_flag |= self->ctf_flag;
+	other->rune_pickup_time = g_globalvars.time;
+	other->rune_effect_finished = g_globalvars.time + STATIC_RUNE_DURATION;
+
+	cl_refresh_plus_scores(other);
+
+	if (self->ctf_flag & CTF_RUNE_RES)
+	{
+		G_sprint(other, 2, "You got the %s rune\n", redtext("resistance"));
+	}
+
+	if (self->ctf_flag & CTF_RUNE_STR)
+	{
+		G_sprint(other, 2, "You got the %s rune\n", redtext("strength"));
+	}
+
+	if (self->ctf_flag & CTF_RUNE_HST)
+	{
+		other->maxspeed *= (cvar("k_ctf_rune_power_hst") / 8) + 1;
+		G_sprint(other, 2, "You got the %s rune\n", redtext("haste"));
+	}
+
+	if (self->ctf_flag & CTF_RUNE_RGN)
+	{
+		G_sprint(other, 2, "You got the %s rune\n", redtext("regeneration"));
+	}
+
+	sound(other, CHAN_ITEM, "weapons/lock4.wav", 1, ATTN_NORM);
+	stuffcmd(other, "bf\n");
+	StaticRuneScheduleSpawn(self->rune_spawn_origin, self->ctf_flag, STATIC_RUNE_RESPAWN_TIME);
+	ent_remove(self);
+}
+
 char* GetRuneSpawnName(void)
 {
 	char *runespawn;
@@ -341,7 +593,7 @@ char* GetRuneSpawnName(void)
 gedict_t* UniqueRuneSpawn(int rune_type, int nrunes, gedict_t **runes)
 {
 	char *spawnname;
-	int i, nspawns;
+	int i, j, nspawns;
 	qbool unique;
 	gedict_t *e;
 
@@ -355,9 +607,9 @@ gedict_t* UniqueRuneSpawn(int rune_type, int nrunes, gedict_t **runes)
 
 		unique = true;
 
-		for (i = 0; i < nrunes; i++)
+		for (j = 0; j < nrunes; j++)
 		{
-			if (runes && self == runes[i])
+			if (runes && self == runes[j])
 			{
 				unique = false;
 				break;
@@ -380,13 +632,10 @@ gedict_t* UniqueRuneSpawn(int rune_type, int nrunes, gedict_t **runes)
 // spawn/remove runes
 void SpawnRunes(qbool yes)
 {
-	gedict_t *oself, *e, *runes[4];
+	gedict_t *oself, *runes[4];
 	int nrunes = 0;
 
-	for (e = world; (e = find(e, FOFCLSN, "rune"));)
-	{
-		ent_remove(e);
-	}
+	RemoveRuneEnts();
 
 	if (!yes)
 	{
@@ -473,7 +722,7 @@ void CheckStuffRune(void)
 		}
 	}
 
-	if (!isCTF())
+	if (!isCTF() && !cvar("k_static_runes"))
 	{
 		self->items2 = 0; // no runes/sigils in HUD
 

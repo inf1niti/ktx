@@ -137,31 +137,31 @@ void muzzleflash(void)
 
 void player_chain1(void)
 {
-	self->s.v.frame = 137;
+	self->s.v.frame = 136;
 	self->think = (func_t) player_chain2;
-	self->s.v.nextthink = next_frame();
-	self->s.v.weaponframe = 2;
+	self->s.v.nextthink = g_globalvars.time + 0.1;
+	self->s.v.weaponframe = 1;
 	GrappleThrow();
 }
 
 void player_chain2(void)
 {
-	self->s.v.frame = 138;
+	self->s.v.frame = 137;
 	self->think = (func_t) player_chain3;
-	self->s.v.nextthink = next_frame();
-	self->s.v.weaponframe = 3;
+	self->s.v.nextthink = g_globalvars.time + 0.1;
+	self->s.v.weaponframe = 2;
 }
 
 void player_chain3(void)
 {
-	self->s.v.frame = 139;
+	self->s.v.frame = 138;
 	self->s.v.weaponframe = 3;
 
 	if (!self->hook_out)
 	{
 		player_chain5();
 	}
-	else if (vlen(self->s.v.velocity) >= 750)
+	else if (self->on_hook)
 	{
 		player_chain4();
 	}
@@ -185,9 +185,10 @@ void player_chain4(void)
 	{
 		player_chain5();
 	}
-	else if (vlen(self->s.v.velocity) < 750)
+	else if (!self->on_hook)
 	{
-		player_chain3();
+		self->think = (func_t) player_chain3;
+		self->s.v.nextthink = next_frame();
 	}
 	else
 	{
@@ -1149,16 +1150,22 @@ void PlayerDie(void)
 
 	DropPowerups();
 
+	if (self->hook_out)
+	{
+		GrappleReset(self->hook);
+	}
+
+	if (cvar("k_static_runes"))
+	{
+		ClearRuneEffect(self);
+	}
+	else if (isCTF())
+	{
+		DropRune();
+	}
+
 	if (isCTF())
 	{
-		if (self->hook_out)
-		{
-			GrappleReset(self->hook);
-			self->attack_finished = g_globalvars.time + 0.75;
-			self->hook_out = true; // FIXME: for which reason this set to true?
-		}
-
-		DropRune();
 		PlayerDropFlag(self, false);
 	}
 

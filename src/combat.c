@@ -548,13 +548,13 @@ void T_Damage(gedict_t *targ, gedict_t *inflictor, gedict_t *attacker, float dam
 	// ctf strength rune
 	if (attacker->ctf_flag & CTF_RUNE_STR)
 	{
-		damage *= (cvar("k_ctf_rune_power_str") / 2) + 1;
+		damage *= RuneStrMultiplier(attacker);
 	}
 
 	// ctf resistance rune
 	if (targ->ctf_flag & CTF_RUNE_RES)
 	{
-		damage /= (cvar("k_ctf_rune_power_res") / 2) + 1;
+		damage *= RuneResMultiplier(targ);
 		ResistanceSound(targ);
 	}
 

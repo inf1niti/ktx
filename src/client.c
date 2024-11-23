@@ -1902,6 +1902,26 @@ void PutClientInServer(void)
 				"info_player_deathmatch" : streq(getteam(self), "red") ?
 				"info_player_team1_deathmatch" : "info_player_team2_deathmatch");
 		}
+		else if (isCTF() && (cvar("k_ctf_based_spawn") == 3))
+		{
+			float random;
+			random = g_random();
+
+			if (random <= 0.4)
+			{
+				spot = SelectSpawnPoint("info_player_deathmatch");
+			}
+			else if (random <= 0.733)
+			{
+				spot = SelectSpawnPoint(streq(getteam(self), "red") ?
+					"info_player_team1_deathmatch" : "info_player_team2_deathmatch");
+			}
+			else
+			{
+				spot = SelectSpawnPoint(streq(getteam(self), "red") ?
+				"info_player_team2_deathmatch" : "info_player_team1_deathmatch");
+			}
+		}
 		else if (isRA() && (isWinner(self) || isLoser(self)))
 		{
 			spot = SelectSpawnPoint("info_teleport_destination");
@@ -2709,7 +2729,14 @@ void PlayerJump(void)
 		//crt - get rid of jump sound for spec
 		if (!isRA() || (isWinner(self) || isLoser(self)))
 		{
-			sound(self, CHAN_BODY, "player/plyrjmp8.wav", 1, ATTN_NORM);
+			if (!RingStealthActive(self))
+			{
+				sound(self, CHAN_BODY, "player/plyrjmp8.wav", 1, ATTN_NORM);
+			}
+			else
+			{
+				sound(self, CHAN_BODY, "hknight/hit.wav", 0.5, ATTN_IDLE);				
+			}
 		}
 
 		// JUMPBUG[
@@ -2821,7 +2848,10 @@ void WaterMove(void)
 		if (((int)(self->s.v.flags)) & FL_INWATER)
 		{
 			// play leave water sound
-			sound(self, CHAN_BODY, "misc/outwater.wav", 1, ATTN_NORM);
+			if (!RingStealthActive(self))
+			{
+				sound(self, CHAN_BODY, "misc/outwater.wav", 1, ATTN_NORM);
+			}
 			self->s.v.flags -= FL_INWATER;
 		}
 
@@ -2866,22 +2896,24 @@ void WaterMove(void)
 
 	if (!(((int)(self->s.v.flags)) & FL_INWATER))
 	{
-		// player enter water sound
-		if (self->s.v.watertype == CONTENT_LAVA)
+		if (!RingStealthActive(self))
 		{
-			sound(self, CHAN_BODY, "player/inlava.wav", 1, ATTN_NORM);
-		}
+			// player enter water sound
+			if (self->s.v.watertype == CONTENT_LAVA)
+			{
+				sound(self, CHAN_BODY, "player/inlava.wav", 1, ATTN_NORM);
+			}
 
-		if (self->s.v.watertype == CONTENT_WATER)
-		{
-			sound(self, CHAN_BODY, "player/inh2o.wav", 1, ATTN_NORM);
-		}
+			if (self->s.v.watertype == CONTENT_WATER)
+			{
+				sound(self, CHAN_BODY, "player/inh2o.wav", 1, ATTN_NORM);
+			}
 
-		if (self->s.v.watertype == CONTENT_SLIME)
-		{
-			sound(self, CHAN_BODY, "player/slimbrn2.wav", 1, ATTN_NORM);
+			if (self->s.v.watertype == CONTENT_SLIME)
+			{
+				sound(self, CHAN_BODY, "player/slimbrn2.wav", 1, ATTN_NORM);
+			}
 		}
-
 		self->s.v.flags += FL_INWATER;
 		self->dmgtime = 0;
 	}
@@ -3028,7 +3060,14 @@ void ClientDisconnect(void)
 		MakeGhost();
 	}
 
-	DropRune();
+	if (cvar("k_static_runes"))
+	{
+		ClearRuneEffect(self);
+	}
+	else
+	{
+		DropRune();
+	}
 	PlayerDropFlag(self, false);
 
 // s: added conditional function call here
@@ -3714,6 +3753,7 @@ void PlayerPreThink(void)
 	float r;
 	qbool zeroFps = false;
 	int k_socd = cvar("k_socd");
+	int items;
 
 	if (self->k_timingWarnTime)
 	{
@@ -3973,6 +4013,12 @@ void PlayerPreThink(void)
 		GrappleService();
 	}
 
+	if (cvar("k_static_runes") && (self->ctf_flag & CTF_RUNE_MASK)
+			&& (self->rune_effect_finished < g_globalvars.time))
+	{
+		ClearRuneEffect(self);
+	}
+
 	if (self->ctf_flag & CTF_RUNE_RGN)
 	{
 		if (self->regen_time < g_globalvars.time)
@@ -4007,6 +4053,43 @@ void PlayerPreThink(void)
 				FrogbotSetHealthArmour(self);
 #endif
 				RegenerationSound(self);
+			}
+
+			if (cvar("k_static_runes") && self->s.v.health >= 150
+					&& (self->s.v.armorvalue == 0 || self->s.v.armorvalue >= 150))
+			{
+				items = self->s.v.items;
+				if ((self->s.v.ammo_rockets < 3) && (items & IT_GRENADE_LAUNCHER || items & IT_ROCKET_LAUNCHER))
+				{
+					self->s.v.ammo_rockets += 1;
+					W_SetCurrentAmmo();
+
+					self->regen_time += 3;
+					RegenerationSound(self);
+				}
+				else if ((self->s.v.ammo_cells < 5) && (items & IT_LIGHTNING))
+				{
+					self->s.v.ammo_cells += 1;
+					W_SetCurrentAmmo();
+
+					self->regen_time += 2;
+					RegenerationSound(self);
+				}
+				else if ((self->s.v.ammo_nails < 20) && (items & IT_NAILGUN || items & IT_SUPER_NAILGUN))
+				{
+					if (self->s.v.ammo_nails > 18)
+					{
+						self->s.v.ammo_nails = 20;
+						W_SetCurrentAmmo();
+					}
+					else
+					{
+						self->s.v.ammo_nails += 2;
+						W_SetCurrentAmmo();
+					}
+					self->regen_time += 1;
+					RegenerationSound(self);
+				}
 			}
 		}
 	}
@@ -4076,6 +4159,10 @@ void CheckPowerups(void)
 			}
 
 			self->s.v.modelindex = modelindex_player;	// don't use eyes
+			if (self->ctf_flag & CTF_FLAG)
+			{
+				PlayerSetRingStealthAlpha(self, false);
+			}
 
 			adjust_pickup_time(&self->it_pickup_time[itRING], &self->ps.itm[itRING].time);
 
@@ -4087,6 +4174,10 @@ void CheckPowerups(void)
 			self->s.v.frame = 0;
 			self->vw_index = 0;
 			self->s.v.modelindex = modelindex_eyes;
+			if (self->ctf_flag & CTF_FLAG)
+			{
+				PlayerSetRingStealthAlpha(self, RingStealthActive(self));
+			}
 		}
 	}
 
@@ -4485,7 +4576,10 @@ void CheckLand(void)
 
 		if (self->s.v.watertype == CONTENT_WATER)
 		{
-			sound(self, CHAN_BODY, "player/h2ojump.wav", 1, ATTN_NORM);
+			if (!RingStealthActive(self))
+			{
+				sound(self, CHAN_BODY, "player/h2ojump.wav", 1, ATTN_NORM);
+			}
 		}
 		else if (self->jump_flag < jumpf_flag)
 		{
@@ -4502,7 +4596,10 @@ void CheckLand(void)
 
 			self->deathtype = dtFALL;
 			T_Damage(self, world, world, 5);
-			sound(self, CHAN_VOICE, "player/land2.wav", 1, ATTN_NORM);
+			if (!RingStealthActive(self))
+			{
+				sound(self, CHAN_VOICE, "player/land2.wav", 1, ATTN_NORM);
+			}
 
 			if (gre && (gre->s.v.takedamage == DAMAGE_AIM) && (gre != self))
 			{
@@ -4513,7 +4610,10 @@ void CheckLand(void)
 		}
 		else
 		{
-			sound(self, CHAN_VOICE, "player/land.wav", 1, ATTN_NORM);
+			if (!RingStealthActive(self))
+			{
+				sound(self, CHAN_VOICE, "player/land.wav", 1, ATTN_NORM);
+			}
 		}
 	}
 

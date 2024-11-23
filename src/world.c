@@ -311,6 +311,7 @@ void SP_worldspawn(void)
 		trap_precache_sound("weapons/chain2.wav");
 		trap_precache_sound("weapons/chain3.wav");
 		trap_precache_sound("weapons/bounce2.wav");
+		trap_precache_sound("knight/sword1.wav");
 		trap_precache_sound("misc/flagtk.wav");
 		trap_precache_sound("misc/flagcap.wav");
 		trap_precache_sound("doors/runetry.wav");
@@ -320,6 +321,7 @@ void SP_worldspawn(void)
 		trap_precache_sound("rune/rune22.wav");
 		trap_precache_sound("rune/rune3.wav");
 		trap_precache_sound("rune/rune4.wav");
+		trap_precache_sound("hknight/hit.wav");	
 	}
 
 	if (cvar("k_instagib_custom_models")) // precache if custom models actived in config, even if instagib not yet activated
@@ -451,6 +453,7 @@ void SP_worldspawn(void)
 	trap_precache_sound("ambience/thunder1.wav");
 	trap_precache_sound("enforcer/enfire.wav");
 	trap_precache_sound("zombie/z_miss.wav");
+	trap_precache_sound("zombie/z_shot1.wav");
 
 // g_models required for yawnmode weapondrops
 	trap_precache_model("progs/g_shot.mdl");
@@ -790,6 +793,9 @@ void FirstFrame(void)
 	RegisterCvar("k_random_maplist"); // select random map from k_ml_XXX variables.
 
 	RegisterCvar("k_mode");
+	RegisterCvar("k_rctf");
+	RegisterCvar("k_static_runes");
+	RegisterCvar("k_ring_stealth");
 	RegisterCvar("k_defmode");
 	RegisterCvar("k_auto_xonx"); // switch XonX mode dependant on players + specs count
 	RegisterCvar("k_matchless");
@@ -954,10 +960,12 @@ void FirstFrame(void)
 	RegisterCvar("k_ctf_hookstyle"); // loop through hookstyle settings
 	RegisterCvar("k_ctf_runes");
 	RegisterCvarEx("k_ctf_rune_bounce", "3");
-	RegisterCvarEx("k_ctf_rune_power_str", "2.0");
-	RegisterCvarEx("k_ctf_rune_power_res", "2.0");
+	RegisterCvarEx("k_ctf_rune_power_str", "1.0");
+	RegisterCvarEx("k_ctf_rune_power_res", "1.0");
 	RegisterCvarEx("k_ctf_rune_power_rgn", "2.0");
 	RegisterCvarEx("k_ctf_rune_power_hst", "2.0");
+	RegisterCvarEx("k_static_rune_str_damage", "1.5");
+	RegisterCvarEx("k_static_rune_res_damage", "0.67");
 	RegisterCvar("k_ctf_ga");
 	RegisterCvar("k_ctf_based_spawn"); // spawn players on the base (red/blue)
 	RegisterCvar("k_ctf_hurt_items");
@@ -1262,18 +1270,26 @@ void FixCTFItems(void)
 	static gameType_t old_k_mode = 0;	// static
 	static int k_ctf_runes = 0;			// static
 	static int k_ctf_hook = 0;			// static
+	static int old_k_rctf = 0;			// static
+	static int old_k_matchless = 0;		// static
+	static int k_static_runes = 0;		// static
 
 	if (framecount == 1)
 	{ // just init vars at first frame, after this we can determine if such vars changed
 		old_k_mode = k_mode;
 		k_ctf_runes = cvar("k_ctf_runes");
 		k_ctf_hook = cvar("k_ctf_hook");
+		old_k_rctf = cvar("k_rctf");
+		old_k_matchless = cvar("k_matchless");
+		k_static_runes = cvar("k_static_runes");
 
 		return;
 	}
 
 #ifdef CTF_RELOADMAP
-	if ((old_k_mode != k_mode) && ((old_k_mode == gtCTF) || (k_mode == gtCTF)))
+	if (((old_k_mode != k_mode) && ((old_k_mode == gtCTF) || (k_mode == gtCTF)))
+			|| (isCTF() && ((old_k_rctf != cvar("k_rctf"))
+							|| (old_k_matchless != cvar("k_matchless")))))
 	{
 		changelevel(mapname);
 	}
@@ -1289,9 +1305,26 @@ void FixCTFItems(void)
 		RegenFlags(isCTF());
 	}
 
-	if ((old_k_mode != k_mode) || (k_ctf_runes != cvar("k_ctf_runes")) || (framecount == 2))
+	if ((old_k_mode != k_mode) || (k_ctf_runes != cvar("k_ctf_runes"))
+			|| (k_static_runes != cvar("k_static_runes")) || (framecount == 2))
 	{
-		SpawnRunes(isCTF() && cvar("k_ctf_runes"));
+		if (k_static_runes != cvar("k_static_runes"))
+		{
+			ClearAllRuneEffects();
+		}
+
+		if (cvar("k_static_runes"))
+		{
+			StaticRunesSpawnAll(false); // spawn current rune set for perusing rune locations in prewar
+		}
+		else if (isCTF() && cvar("k_ctf_runes"))
+		{
+			SpawnRunes(cvar("k_ctf_runes"));
+		}
+		else
+		{
+			RemoveRuneEnts();
+		}
 	}
 
 	if ((old_k_mode != k_mode) || (k_ctf_hook != cvar("k_ctf_hook")))
@@ -1302,6 +1335,9 @@ void FixCTFItems(void)
 	old_k_mode = k_mode;
 	k_ctf_runes = cvar("k_ctf_runes");
 	k_ctf_hook = cvar("k_ctf_hook");
+	old_k_rctf = cvar("k_rctf");
+	old_k_matchless = cvar("k_matchless");
+	k_static_runes = cvar("k_static_runes");
 }
 
 void FixRA(void)
@@ -1814,6 +1850,8 @@ void FixRules(void)
 	{
 		trap_executecmd();
 	}
+
+	k_rctf = cvar("k_rctf") && isCTF();
 
 	SetMode4ServerInfo();
 }

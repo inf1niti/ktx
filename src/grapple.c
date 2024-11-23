@@ -159,6 +159,8 @@ gedict_t* MakeLink(void)
 		setmodel(newmis, "progs/spike.mdl");
 	}
 
+	ExtFieldSetAlpha(newmis, RingStealthActive(PROG_TO_EDICT(self->s.v.owner)) ? RING_STEALTH_ALPHA : 1);
+
 	setorigin(newmis, PASSVEC3(self->s.v.origin));
 	setsize(newmis, 0, 0, 0, 0, 0, 0);
 
@@ -255,6 +257,18 @@ void UpdateChain(void)
 	setorigin(self, PASSVEC3(t1));
 	setorigin(goal, PASSVEC3(t2));
 	setorigin(goal2, PASSVEC3(t3));
+	if (RingStealthActive(owner))
+	{
+		ExtFieldSetAlpha(self, RING_STEALTH_ALPHA);
+		ExtFieldSetAlpha(goal, RING_STEALTH_ALPHA);
+		ExtFieldSetAlpha(goal2, RING_STEALTH_ALPHA);
+	}
+	else
+	{
+		ExtFieldSetAlpha(self, 1);
+		ExtFieldSetAlpha(goal, 1);
+		ExtFieldSetAlpha(goal2, 1);
+	}
 
 	self->s.v.nextthink = next_frame();
 }
@@ -326,7 +340,14 @@ void GrappleAnchor(void)
 	}
 	else
 	{
-		sound(self, CHAN_WEAPON, "player/axhit2.wav", 1, ATTN_NORM);
+		if (RingStealthActive(owner))
+		{
+			sound(self, CHAN_WEAPON, "weapons/tink1.wav", 1, ATTN_IDLE);
+		}
+		else
+		{
+			sound(self, CHAN_WEAPON, "player/axhit2.wav", 1, ATTN_NORM);
+		}
 
 		// One point of damage inflicted upon impact. Subsequent
 		// damage will only be done to PLAYERS... this way secret
@@ -452,7 +473,14 @@ void GrappleThrow(void)
 	g_globalvars.msg_entity = EDICT_TO_PROG(self);
 	WriteByte( MSG_ONE, SVC_SMALLKICK);
 
-	sound(self, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
+	if (RingStealthActive(self))
+	{
+		sound(self, CHAN_WEAPON, "knight/sword2.wav", 0.7, ATTN_IDLE);
+	}
+	else
+	{
+		sound(self, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
+	}
 
 	newmis = spawn();
 	g_globalvars.newmis = EDICT_TO_PROG(newmis);
@@ -498,6 +526,7 @@ void GrappleThrow(void)
 	{
 		setmodel(newmis, "progs/v_spike.mdl");
 	}
+	ExtFieldSetAlpha(newmis, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
 
 	setorigin(newmis, self->s.v.origin[0] + g_globalvars.v_forward[0] * 16,
 				self->s.v.origin[1] + g_globalvars.v_forward[1] * 16,
