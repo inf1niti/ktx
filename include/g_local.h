@@ -923,6 +923,7 @@ void GrappleThrow(void);
 void GrappleService(void);
 void GrappleReset(gedict_t *rhook);
 void CancelHook(gedict_t *owner);
+float AdjustPullSpeed(float currentSpeed, float targetSpeed, float adjustmentRate, float easeFactor);
 float IncreasePullSpeed(float speed, float incr);
 float DecreasePullSpeed(float speed, float decr);
 

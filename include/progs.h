@@ -1011,6 +1011,8 @@ typedef struct gedict_s
 	float hook_cancel_time;					// delay cancel on throw with smooth hook
 	float hook_reset_time;					// marker for grapple reset (decoupled from `attack_finished`)
 	float hook_pullspeed;					// accelerate grapple velocity
+  float hook_initial_length;    // initial length of each grapple
+  vec3_t hook_initial_direction; // initial hook direction (unit vector)
 	float hook_pullspeed_accel;				// number by which to increment velocity
 	char *last_rune;					// name of last rune we send to client
 	float items2;						// using  ZQ_ITEMS2 extension in mvdsv we can use per client sigils for runes
