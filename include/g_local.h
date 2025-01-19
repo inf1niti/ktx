@@ -923,9 +923,8 @@ void GrappleThrow(void);
 void GrappleService(void);
 void GrappleReset(gedict_t *rhook);
 void CancelHook(gedict_t *owner);
-float AdjustPullSpeed(float currentSpeed, float targetSpeed, float adjustmentRate, float easeFactor);
-float IncreasePullSpeed(float speed, float incr);
-float DecreasePullSpeed(float speed, float decr);
+float CalculateAcceleration(float currentSpeed, float targetSpeed);
+float CalcCosine(vec3_t vec, vec3_t uVec);
 
 // hoonymode.c
 
