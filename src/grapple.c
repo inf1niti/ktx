@@ -1,25 +1,34 @@
 #include "g_local.h"
 
 #define PULL_SPEED      700
-#define INIT_PULL_SPEED	250
-#define THROW_SPEED     800
-#define NEW_THROW_SPEED 920
-#define CR_THROW_SPEED  1200
-#define HOOK_FIRE_RATE  0.212
-#define HOOK_ACCEL_TIME 0.667
-#define EPSILON 				1e-6F
+#define INIT_PULL_SPEED 250
+#define THROW_SPEED     900
+#define FIRE_RATE       0.212
+#define ACCEL_TIME      0.667
+#define EPSILON         1e-6F
+
+#define SLACK_DELAY     0.6
+#define SLACK_DURATION  1.5
+
+#define MIN_GRAVITY     0.333
+#define MAX_GRAVITY     0.9
+
+#define MIN_INERTIA     0.05
+#define MAX_INERTIA     0.5
+#define INERTIA_FACTOR  0.64
 
 void SpawnBlood(vec3_t dest, float damage);
 
-float CalculateAcceleration(float currentSpeed, float targetSpeed)
-{
-	return (targetSpeed - currentSpeed) / g_globalvars.frametime; // units/sec^2
+float OscilationFactor(float length, float threshold, float vRad) {
+	float x, k, b;
+	x = threshold - length;
+	x = x < 0 ? 0 : x;
+
+	k = 0.125;
+	b = 2.0 * sqrt(k);
+	return k * x - b * vRad;
 }
 
-
-// calculates cosine/angle of influence between two vectors 
-//  returns a float between -1.0 and 1.0
-// (-1.0: opposite, 0.0: orthogonal, 1.0: aligned)
 float VectorAlignment(vec3_t vector1, vec3_t vector2)
 {
 	vec3_t uv_1, uv_2;
@@ -38,14 +47,7 @@ float VectorAlignment(vec3_t vector1, vec3_t vector2)
 	return bound(-1.0, DotProduct(uv_1, uv_2), 1.0); // clamp output
 }
 
-// additive velocities with rudimentary physics can lead to quadratic speed growth
-// appropriate damping can manage this more realistically than setting speed ceilings
-void ApplyDampingForce(vec3_t velocity, float dampingCoefficient){
-	vec3_t force;
 
-	VectorScale(velocity, -dampingCoefficient, force);
-	VectorAdd(velocity, force, velocity);
-}
 
 //
 // GrappleReset - Removes the hook and resets its owner's state.
@@ -66,9 +68,9 @@ void GrappleReset(gedict_t *rhook)
 	owner->s.v.weaponframe = 0;
 
 	owner->attack_finished = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + ((HOOK_FIRE_RATE / 2) / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + (HOOK_FIRE_RATE / 2);
+		g_globalvars.time + ((FIRE_RATE / 2) / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + (FIRE_RATE / 2);
 	owner->hook_reset_time = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + (HOOK_FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + HOOK_FIRE_RATE;
+		g_globalvars.time + (FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + FIRE_RATE;
 
 	rhook->think = (func_t) SUB_Remove;
 	rhook->s.v.nextthink = next_frame();
@@ -76,9 +78,9 @@ void GrappleReset(gedict_t *rhook)
 
 //
 // GrappleTrack - Constantly updates the hook's position relative to
-//                 what it's hooked to. Inflicts damage if attached to
-//                 a player that is not on the same team as the hook's
-//                 owner.
+//                what it's hooked to. Inflicts damage if attached to
+//                a player that is not on the same team as the hook's
+//                owner.
 //
 void GrappleTrack(void)
 {
@@ -164,9 +166,9 @@ gedict_t* MakeLink(void)
 
 //
 // RemoveChain - Removes all chain link entities; this is a separate
-//                function because CLIENT also needs to be able
-//                to remove the chain. Only one function required to
-//                remove all links.
+//               function because CLIENT also needs to be able
+//               to remove the chain. Only one function required to
+//               remove all links.
 //
 void RemoveChain(void)
 {
@@ -359,15 +361,11 @@ void GrappleService(void)
 {
 	gedict_t *target;
 
-	vec3_t hookVector, uv_self, uv_hook, accelVec, radialVel, tangentialVel, newRadialVel,
-		uv_gravity, hookGravity, springForce, osRadialVel, osTangentialVel, alignedVelocity, newVelocity;
+	vec3_t hookVector, uv_self, uv_hook, transVector, radialVel, tangentialVel, uv_gravity;
 
-	float distanceToHook, hasteMultiplier, maxPullSpeed, initPullSpeed, currentSpeedAlongHook, pullLerpFactor, 
-		targetSpeed, speedDiff, accel, exceedAmount, dampFraction, radialSlowdown, newRadialSpeed,
-		gravityInfluence, pullFraction, gravLerpFactor, minGravFactor, maxGravFactor, appliedFactor, playerSpeed,
-		pullAlignment, slackTime, slackDuration, timeElapsed, timeFraction, minSpeedReduction, maxSpeedReduction, 
-		reductionFactor, appliedReduction, magnitude, inertiaLerpFactor, maxInertiaFactor, overshootThreshold, ratio,
-		springStrength, k, springMagnitude, radialSpeed, dampingFactor, finalSpeedCap, finalSpeed, scalingFactor;
+	float distanceToHook, hasteMultiplier, minPull, maxPull, radialSpeed, targetSpeed, speedDiff, gravityInfluence,
+		appliedFactor, playerSpeed, playerInfluence, timeElapsed, timeFraction, magnitude, lerpFactor, overshootThreshold,
+		finalSpeedCap, finalSpeed;
 
 	// Drop the hook if player lets go of fire
 	if (!self->s.v.button0)
@@ -379,9 +377,14 @@ void GrappleService(void)
 		}
 	}
 
+	// remove onground constantly
+	if ((int)self->s.v.flags & FL_ONGROUND)
+	{
+		self->s.v.flags -= FL_ONGROUND;
+	}
+
 	// preform per-frame precalculations
 	target = PROG_TO_EDICT(self->hook->s.v.enemy);
-
 	if (target->ct == ctPlayer)
 	{
 		VectorSubtract(target->s.v.origin, self->s.v.origin, hookVector);
@@ -396,44 +399,42 @@ void GrappleService(void)
 	VectorNormalize(uv_hook);
 	distanceToHook = VectorLength(hookVector);
 	hasteMultiplier = (cvar("k_ctf_rune_power_hst") / 16) + 1;
-	
-	// pullspeed
-	maxPullSpeed = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
-	initPullSpeed = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
-	currentSpeedAlongHook = DotProduct(self->s.v.velocity, uv_hook);
-	pullLerpFactor = bound(0, (self->hook_time / HOOK_ACCEL_TIME), 1);
-	targetSpeed = initPullSpeed + pullLerpFactor * (maxPullSpeed - initPullSpeed); // lerp target speed
 
 
-	//  HOOK ACCELLERATION
-	//  ==================
+	// HOOK ACCELLERATION
+	// ==================
 
-	speedDiff = targetSpeed - currentSpeedAlongHook;
+	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
+	maxPull = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
+	radialSpeed = DotProduct(self->s.v.velocity, uv_hook);
+	lerpFactor = bound(0, (self->hook_time / ACCEL_TIME), 1);
+	targetSpeed = minPull + lerpFactor * (maxPull - minPull); // lerp target speed
+
+	speedDiff = targetSpeed - radialSpeed;
 	if (speedDiff > 0)
 	{
-		accel = speedDiff / g_globalvars.frametime;
-		VectorScale(uv_hook, accel, accelVec);
-		VectorMA(self->s.v.velocity, g_globalvars.frametime, accelVec, self->s.v.velocity);
+		magnitude = speedDiff / g_globalvars.frametime;
+		VectorScale(uv_hook, magnitude, transVector);
+		VectorMA(
+			self->s.v.velocity,
+			g_globalvars.frametime,
+			transVector, // acceleration vector
+			self->s.v.velocity);
 	}
 
 	else if (speedDiff < 0)
 	{
 		// exceeding target speed, soft damping on radial
-		radialSpeed = currentSpeedAlongHook;
+		magnitude = radialSpeed - (abs(speedDiff) * 0.025);
+		magnitude = magnitude < maxPull ? maxPull : magnitude;
+
 		VectorScale(uv_hook, radialSpeed, radialVel);
 		VectorSubtract(self->s.v.velocity, radialVel, tangentialVel);
 
-		exceedAmount = abs(speedDiff);
-		dampFraction = 0.025; // remove 2.5% of excess speed per frame
-		radialSlowdown = exceedAmount * dampFraction;
-		newRadialSpeed = radialSpeed - radialSlowdown;
-		newRadialSpeed = newRadialSpeed < maxPullSpeed ? maxPullSpeed : newRadialSpeed;
-
-		VectorScale(uv_hook, newRadialSpeed, newRadialVel);
-		VectorAdd(newRadialVel, tangentialVel, newVelocity);
-		VectorCopy(newVelocity, self->s.v.velocity);
+		VectorScale(uv_hook, magnitude, radialVel); // new radial velocity
+		VectorAdd(radialVel, tangentialVel, self->s.v.velocity); // new sum (player vel)
 	}
-	self->hook_time = min(self->hook_time + g_globalvars.frametime, HOOK_ACCEL_TIME);
+	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
 
 
 	// GRAVITY ADJUSTMENT
@@ -441,19 +442,21 @@ void GrappleService(void)
 
 	VectorSet(uv_gravity, 0, 0, -1);
 	gravityInfluence = VectorAlignment(uv_gravity, uv_hook);
-	pullFraction = bound(0, (currentSpeedAlongHook / maxPullSpeed), 1);
-	gravLerpFactor = pullFraction;
-	minGravFactor = 0.333;
-	maxGravFactor = 0.9;
-	appliedFactor = minGravFactor + gravLerpFactor * (maxGravFactor - minGravFactor); // lerp gravity adjustment factor (min/max adjustment 0.1/0.5)
+	lerpFactor = bound(0, (radialSpeed / maxPull), 1);
+	appliedFactor = MIN_GRAVITY + lerpFactor * (MAX_GRAVITY - MIN_GRAVITY); // gravity adjustment factor
 
-	// if appliedFactor is not insignificantly small
+	// if hook angle is upwards, and factor is not insignificant
 	if (gravityInfluence < 0 && appliedFactor > 0.02)
 	{
-		VectorScale(uv_hook, gravityInfluence, hookGravity);
+		VectorScale(uv_hook, gravityInfluence, transVector);
 
 		// add back a fraction of gravity along the hook axis
-		VectorMA(self->s.v.velocity, appliedFactor * cvar("sv_gravity") * g_globalvars.frametime, hookGravity, self->s.v.velocity);
+		VectorMA(
+			self->s.v.velocity, 
+			appliedFactor * cvar("sv_gravity") * g_globalvars.frametime, 
+			transVector, // gravity influence vector
+			self->s.v.velocity
+		);
 	}
 
 
@@ -461,35 +464,36 @@ void GrappleService(void)
 	// ============================
 
 	VectorCopy(self->s.v.velocity, uv_self);
-	playerSpeed = VectorNormalize(uv_self); // Get speed and normalize velocity
-	pullAlignment = bound(-1.0, DotProduct(uv_self, uv_hook), 1.0);
-	slackTime = 0.6;
-	slackDuration = 1.5;
+	playerSpeed = VectorNormalize(uv_self);
+	playerInfluence = VectorAlignment(uv_self, uv_hook);
 
 	// Apply elastic effect when moving opposite to hook direction
-	if (pullAlignment < 0 && distanceToHook > 0.5 * self->hook_initial_length)
+	if (playerInfluence < 0 && distanceToHook > (self->hook_initial_length / 2))
 	{
 		self->hook_awaytime += g_globalvars.frametime;
+		timeElapsed = self->hook_awaytime - SLACK_DELAY;
 
-		if(self->hook_awaytime > slackTime) {
-			timeElapsed = self->hook_awaytime - slackTime;
-			timeFraction = bound(0, (timeElapsed / slackDuration), 1);
-			minSpeedReduction = 0.05;
-			maxSpeedReduction = 0.5;
-			reductionFactor = abs(pullAlignment) * timeFraction;
-			appliedReduction = minSpeedReduction + reductionFactor * (maxSpeedReduction - minSpeedReduction);
+		if(self->hook_awaytime > SLACK_DELAY) {
+			timeFraction = bound(0, timeElapsed / SLACK_DURATION, 1);
+			lerpFactor = MIN_INERTIA + (abs(playerInfluence) * timeFraction) * (MAX_INERTIA - MIN_INERTIA);
 
-			magnitude = playerSpeed * (1.0 - appliedReduction);
-			maxInertiaFactor = 0.64;
-			inertiaLerpFactor = maxInertiaFactor * abs(pullAlignment) * timeFraction;
+			// extra damping to prevent runaway acceleration
+			VectorScale(
+				self->s.v.velocity,
+				(1.0 - (INERTIA_FACTOR * abs(playerInfluence) * timeFraction)),
+				self->s.v.velocity
+			);
 
-			VectorScale(uv_hook, magnitude, alignedVelocity);
-			VectorScale(self->s.v.velocity, (1.0 - inertiaLerpFactor), newVelocity);
-			VectorMA(newVelocity, inertiaLerpFactor, alignedVelocity, newVelocity);
-
-			VectorCopy(newVelocity, self->s.v.velocity);
+			VectorScale(uv_hook, (playerSpeed * (1.0 - lerpFactor)), transVector);
+			VectorMA(
+				self->s.v.velocity,
+				lerpFactor,
+				transVector, // inertia reduction vector
+				self->s.v.velocity
+			);
 		}
 	}
+
 	else if (self->hook_awaytime > 0)
 	{
 		self->hook_awaytime = 0;
@@ -498,20 +502,22 @@ void GrappleService(void)
 
 	// OVERSHOOT & OSCILLATION
 	// =======================
-
-	overshootThreshold = 0.18 * self->hook_initial_length;
+	overshootThreshold = 0.25 * self->hook_initial_length;
 	if (distanceToHook < overshootThreshold)
 	{
-    float x = (overshootThreshold - distanceToHook);
-    if (x < 0) x = 0;
-    
-    float vRadial = DotProduct(self->s.v.velocity, uv_hook);
-
-    float k = 0.125;
-    float b = 2.0 * sqrt(k);
-    float F = k * x - b * vRadial;
-    VectorScale(uv_hook, F, accelVec);
-    VectorMA(self->s.v.velocity, g_globalvars.frametime, accelVec, self->s.v.velocity);
+		magnitude = OscilationFactor(
+			distanceToHook,
+			overshootThreshold,
+			DotProduct(self->s.v.velocity, uv_hook)
+		);
+		
+		VectorScale(uv_hook, magnitude, transVector);
+		VectorMA(
+			self->s.v.velocity,
+			g_globalvars.frametime,
+			transVector, // oscilation magnitude vector
+			self->s.v.velocity
+		);
 	}
 
 
@@ -524,14 +530,8 @@ void GrappleService(void)
 	finalSpeed = VectorLength(self->s.v.velocity);
 	if (finalSpeed > finalSpeedCap)
 	{
-		scalingFactor = finalSpeedCap / finalSpeed;
-		VectorScale(self->s.v.velocity, scalingFactor, self->s.v.velocity);
-	}
-
-	// remove onground constantly?
-	if ((int)self->s.v.flags & FL_ONGROUND)
-	{
-		self->s.v.flags -= FL_ONGROUND;
+		magnitude = finalSpeedCap / finalSpeed;
+		VectorScale(self->s.v.velocity, magnitude, self->s.v.velocity);
 	}
 }
 
@@ -540,7 +540,7 @@ void GrappleService(void)
 void GrappleThrow(void)
 {
 	vec3_t initialVelocity, uv_throw;
-	float hasteMultiplier, playerSpeed, influence, alignmentFactor;
+	float hasteMultiplier, playerSpeed, playerInfluence, alignmentFactor;
 	if (self->hook_out || self->hook_reset_time > g_globalvars.time) // only throw once & wait for cooldown time to complete
 	{
 		return;
@@ -561,7 +561,7 @@ void GrappleThrow(void)
 	self->hook = newmis;
 	newmis->classname = "hook";
 	self->hook_cancel_time = 0;
-  self->hook_awaytime = 0;
+	self->hook_awaytime = 0;
 
 	trap_makevectors(self->s.v.v_angle);
 
@@ -570,27 +570,27 @@ void GrappleThrow(void)
 
 	// Calculate alignment factor between player's current velocity and throw direction
 	playerSpeed = vlen(self->s.v.velocity);
-	influence = 0;
+	playerInfluence = 0;
 	if (playerSpeed > 0)  // Ensure velocity is non-zero to avoid division issues
 	{
-		influence = VectorAlignment(self->s.v.velocity, uv_throw);
+		playerInfluence = VectorAlignment(self->s.v.velocity, uv_throw);
 	}
 
 	// Use alignment factor to influence the throw speed
 	// If aligned, increase speed slightly. If opposed, reduce speed slightly.
-	alignmentFactor = 1 + (influence * 0.333);  // Scale between 0.66 (opposed) and 1.33 (aligned)
+	alignmentFactor = 1 + (playerInfluence * 0.333);  // Scale between 0.66 (opposed) and 1.33 (aligned)
 
 	// Adjust the throw speed based on alignment and haste multiplier
 	if (self->ctf_flag & CTF_RUNE_HST)
 	{
 		HasteSound(self);
-		VectorScale(uv_throw, NEW_THROW_SPEED * hasteMultiplier * alignmentFactor, initialVelocity);
+		VectorScale(uv_throw, THROW_SPEED * hasteMultiplier * alignmentFactor, initialVelocity);
 		SetVector(newmis->s.v.avelocity, 300 * hasteMultiplier, 300 * hasteMultiplier, 300 * hasteMultiplier);
 	}
 	else
 	{
-		VectorScale(uv_throw, NEW_THROW_SPEED * alignmentFactor, initialVelocity);
-		SetVector(newmis->s.v.avelocity, -300, -300, -300);
+		VectorScale(uv_throw, THROW_SPEED * alignmentFactor, initialVelocity);
+		SetVector(newmis->s.v.avelocity, 300, 300, 300);
 	}
 
 	// Add the player's current velocity to the hook's initial velocity for inertia
