@@ -1,17 +1,17 @@
 #include "g_local.h"
 
-#define PULL_SPEED      700
-#define INIT_PULL_SPEED 250
+#define PULL_SPEED      648
+#define INIT_PULL_SPEED 244
 #define THROW_SPEED     900
-#define FIRE_RATE       0.212
-#define ACCEL_TIME      0.667
+#define FIRE_RATE       0.24
+#define ACCEL_TIME      0.692
 #define EPSILON         1e-6F
 
-#define SLACK_DELAY     0.333
+#define SLACK_DELAY     0.3
 #define SLACK_DURATION  0.9
 
-#define MIN_GRAVITY     0.333
-#define MAX_GRAVITY     0.9
+#define MIN_GRAVITY     0.34
+#define MAX_GRAVITY     0.89
 
 #define MIN_INERTIA     0.05
 #define MAX_INERTIA     0.5
@@ -23,8 +23,8 @@ float OscilationFactor(float length, float threshold, float vRad) {
 	x = threshold - length;
 	x = x < 0 ? 0 : x;
 
-	k = 0.125;
-	b = 2.0 * sqrt(k);
+	k = 0.164;
+	b = 2 * sqrt(k);
 	return k * x - b * vRad;
 }
 
@@ -456,7 +456,7 @@ void GrappleService(void)
 
 	// SPEED CAP
 	finalSpeedCap = (self->ctf_flag & CTF_RUNE_HST) ? 
-			PULL_SPEED * 1.175 * hasteMultiplier : PULL_SPEED * 1.175;
+			PULL_SPEED * 1.125 * hasteMultiplier : PULL_SPEED * 1.125;
 	
 	finalSpeed = VectorLength(self->s.v.velocity);
 	if (finalSpeed > finalSpeedCap)
