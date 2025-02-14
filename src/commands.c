@@ -900,7 +900,6 @@ cmd_t cmds[] =
 	//	{ "pos_velocity", DEF(Pos_Set), 							3, 			CF_BOTH | CF_PARAMS, 													CD_POS_VELOCITY },
 	{ "sh_speed", 					Sh_Speed, 						0, 			CF_BOTH, 																CD_SH_SPEED },
 	// { CTF commands
-	{ "tossrune", 					TossRune, 						0, 			CF_PLAYER | CF_MATCHLESS, 												CD_TOSSRUNE },
 	{ "tossflag", 					TossFlag, 						0, 			CF_PLAYER | CF_MATCHLESS, 												CD_TOSSFLAG },
 	{ "nohook", 					nohook, 						0, 			CF_PLAYER | CF_MATCHLESS, 											CD_NOHOOK },
 	{ "hook_smooth", 				hooksmooth, 					0, 			CF_PLAYER | CF_MATCHLESS, 											CD_HOOKSMOOTH },
@@ -3224,7 +3223,6 @@ void ShowRules(void)
 		G_sprint(self, 2, "Server is in CTF mode.\n"
 					"Additional commands/impulses:\n"
 					"impulse 22 : Grappling Hook\n"
-					"tossrune   : Toss your current rune\n"
 					"tossflag   : Toss carried flag\n"
 					"flagstatus : Displays flag information\n");
 	}
@@ -4354,14 +4352,14 @@ const char ffa_um_init[] =
 
 const char ctf_um_init[] =
 	"sv_loadentfiles_dir ctf\n"
-	"pm_airstep 1\n"
+	"pm_airstep 0\n"
 	"coop 0\n"
 	"maxclients 16\n"
 	"k_maxclients 16\n"
-	"timelimit 10\n"
-	"teamplay 4\n"
-	"deathmatch 3\n"
-	"k_dis 2\n"						// no out of water discharges in ctf
+	"timelimit 20\n"
+	"teamplay 2\n"
+	"deathmatch 1\n"
+	"k_dis 2\n"					// no out of water discharges in ctf
 	"k_pow 1\n"
 	"k_spw 1\n"
 	"k_membercount 0\n"
@@ -4370,10 +4368,10 @@ const char ctf_um_init[] =
 	"k_overtime 1\n"
 	"k_exttime 5\n"
 	"k_mode 4\n"
-	"k_ctf_based_spawn 1\n"			// team based spawn
-	"k_ctf_hook 0\n"				// hook off
-	"k_ctf_runes 0\n"				// runes off
-	"k_ctf_ga 1\n"					// green armor on
+	"k_ctf_based_spawn 3\n"				// team based spawn
+	"k_ctf_hook 1\n"				// hook off
+	"k_ctf_runes 1\n"				// runes off
+	"k_ctf_ga 0\n"					// green armor on
 ;
 
 const char wipeout_um_init[] =

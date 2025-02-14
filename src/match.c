@@ -819,9 +819,9 @@ void SM_PrepareMap(void)
 {
 	gedict_t *p;
 
-	if (isCTF())
+	if (isCTF() && cvar("k_ctf_runes"))
 	{
-		SpawnRunes(cvar("k_ctf_runes"));
+		SpawnRunes(true); // spawn runes with initial delay for match
 	}
 
 	// this must be removed in any cases

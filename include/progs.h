@@ -1014,6 +1014,8 @@ typedef struct gedict_s
 	float rune_notify_time;					// already have a rune spam prevention
 	float carrier_hurt_time;				// time we last hurt enemy carrier
 	float rune_pickup_time;					// time we picked up current rune
+	float rune_effect_finished;				// time that the rune powerup expires
+	vec3_t rune_spawn_origin;				// unique identifier in case multiple runes of the same type
 	float hook_damage_time;					// manage dps dealt to hooked enemies
 	float hook_cancel_time;					// delay cancel on throw with smooth hook
 	float hook_reset_time;					// marker for grapple reset (decoupled from `attack_finished`)

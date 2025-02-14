@@ -1154,11 +1154,8 @@ void PlayerDie(void)
 		if (self->hook_out)
 		{
 			GrappleReset(self->hook);
-			self->attack_finished = g_globalvars.time + 0.75;
-			self->hook_out = true; // FIXME: for which reason this set to true?
 		}
-
-		DropRune();
+		ClearRuneEffect(self);
 		PlayerDropFlag(self, false);
 	}
 
