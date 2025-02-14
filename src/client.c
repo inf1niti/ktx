@@ -1841,6 +1841,26 @@ void PutClientInServer(void)
 				"info_player_deathmatch" : streq(getteam(self), "red") ?
 				"info_player_team1_deathmatch" : "info_player_team2_deathmatch");
 		}
+		else if (isCTF() && (cvar("k_ctf_based_spawn") == 3))
+		{
+			float random;
+			random = g_random();
+
+			if (random <= 0.4)
+			{
+				spot = SelectSpawnPoint("info_player_deathmatch");
+			}
+			else if (random <= 0.733)
+			{
+				SelectSpawnPoint(streq(getteam(self), "red") ?
+					"info_player_team1_deathmatch" : "info_player_team2_deathmatch");
+			}
+			else
+			{
+				SelectSpawnPoint(streq(getteam(self), "red") ?
+				"info_player_team2_deathmatch" : "info_player_team1_deathmatch");
+			}
+		}
 		else if (isRA() && (isWinner(self) || isLoser(self)))
 		{
 			spot = SelectSpawnPoint("info_teleport_destination");
@@ -2845,7 +2865,7 @@ void ClientDisconnect(void)
 		MakeGhost();
 	}
 
-	DropRune();
+	ClearRuneEffect(self);
 	PlayerDropFlag(self, false);
 
 // s: added conditional function call here
@@ -3530,6 +3550,7 @@ void PlayerPreThink(void)
 {
 	float r;
 	qbool zeroFps = false;
+	int items;
 
 	if (self->k_timingWarnTime)
 	{
@@ -3730,6 +3751,11 @@ void PlayerPreThink(void)
 		GrappleService();
 	}
 
+  if ((self->ctf_flag & CTF_RUNE_MASK) && (self->rune_effect_finished < g_globalvars.time))
+  {
+    ClearRuneEffect(self);
+  }
+
 	if (self->ctf_flag & CTF_RUNE_RGN)
 	{
 		if (self->regen_time < g_globalvars.time)
@@ -3764,6 +3790,33 @@ void PlayerPreThink(void)
 				FrogbotSetHealthArmour(self);
 #endif
 				RegenerationSound(self);
+			}
+
+			if (self->s.v.health >= 150 && (self->s.v.armorvalue == 0 || self->s.v.armorvalue >= 150))
+			{
+				items = self->s.v.items;
+				if ((self->s.v.ammo_rockets < 3) && (items & IT_GRENADE_LAUNCHER || items & IT_ROCKET_LAUNCHER))
+				{
+					self->s.v.ammo_rockets += 1;
+					self->regen_time += 3;
+				}
+				else if ((self->s.v.ammo_cells < 5) && (items & IT_LIGHTNING))
+				{
+					self->s.v.ammo_cells += 1;
+					self->regen_time += 2;
+				}
+				else if ((self->s.v.ammo_nails < 20) && (items & IT_NAILGUN || items & IT_SUPER_NAILGUN))
+				{
+					if (self->s.v.ammo_nails > 18)
+					{
+						self->s.v.ammo_nails = 20;
+					}
+					else
+					{
+						self->s.v.ammo_nails += 2;
+					}
+					self->regen_time += 1;
+				}
 			}
 		}
 	}

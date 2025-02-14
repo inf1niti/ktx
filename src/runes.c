@@ -4,262 +4,141 @@
 
 #include "g_local.h"
 
-void RegenLostRot(void);
-void RuneRespawn(void);
+// rune powerup timing (initial delay, powerup duration, respawn delay)
+#define RUNE_DELAY_TIME			30
+#define RUNE_DURATION			60
+#define RUNE_RESPAWN_TIME		120
+
+// map entity names for setting rune spawn locations
+#define RUNE_SPAWN_RES			"item_rune_res"
+#define RUNE_SPAWN_STR			"item_rune_str"
+#define RUNE_SPAWN_HST			"item_rune_hst"
+#define RUNE_SPAWN_RGN			"item_rune_rgn"
+
+void SpawnRunesByType(int rune, char *spawnName, int delay);
+void SpawnRune(vec3_t origin, int runeflags);
+void ScheduleSpawnRune(vec3_t origin, int runeflags, int delay);
 void RuneTouch(void);
-void RuneResetOwner(void);
-char* GetRuneSpawnName(void);
+void RespawnRune(void);
 
-void DoDropRune(int rune, qbool on_respawn)
+// clear previously existing rune entities
+void ClearRunes(void)
 {
-	gedict_t *item, *pos = NULL;
-	float movetype = MOVETYPE_NONE;
-
-	cl_refresh_plus_scores(self);
-
-	if (on_respawn)
+	gedict_t *e;
+	for (e = world; (e = ez_find(e, "rune"));)
 	{
-		if (rune & CTF_RUNE_RES)
-		{
-			pos = ez_find(world, "item_rune_res");
-		}
-		else if (rune & CTF_RUNE_STR)
-		{
-			pos = ez_find(world, "item_rune_str");
-		}
-		else if (rune & CTF_RUNE_HST)
-		{
-			pos = ez_find(world, "item_rune_hst");
-		}
-		else if (rune & CTF_RUNE_RGN)
-		{
-			pos = ez_find(world, "item_rune_rgn");
-		}
-	}
-
-	// No dedicated rune position found, just toss on self
-	if (pos == NULL)
-	{
-		pos = self;
-		if (on_respawn)
-		{
-			// Rune respawn, bounce adds randomization.
-			movetype = (int) cvar("k_ctf_rune_bounce") & 1 ? MOVETYPE_BOUNCE : MOVETYPE_TOSS;
-		}
-		else
-		{
-			// Drop rune due to player died.
-			movetype = MOVETYPE_TOSS;
-		}
-	}
-
-	item = spawn();
-	setorigin(item, pos->s.v.origin[0], pos->s.v.origin[1], pos->s.v.origin[2] - 24);
-	item->classname = "rune";
-	item->ctf_flag = rune;
-	item->s.v.velocity[0] = i_rnd(-100, 100);
-	item->s.v.velocity[1] = i_rnd(-100, 100);
-	item->s.v.velocity[2] = 400;
-	item->s.v.flags = FL_ITEM;
-	item->s.v.solid = SOLID_TRIGGER;
-	item->s.v.movetype = movetype;
-
-	if (rune & CTF_RUNE_RES)
-	{
-		setmodel(item, "progs/end1.mdl");
-	}
-	else if (rune & CTF_RUNE_STR)
-	{
-		setmodel(item, "progs/end2.mdl");
-	}
-	else if (rune & CTF_RUNE_HST)
-	{
-		setmodel(item, "progs/end3.mdl");
-	}
-	else if (rune & CTF_RUNE_RGN)
-	{
-		setmodel(item, "progs/end4.mdl");
-	}
-
-	setsize(item, -16, -16, 0, 16, 16, 56);
-	item->touch = (func_t) RuneTouch;
-	item->s.v.nextthink = g_globalvars.time + 90;
-	item->think = (func_t) RuneRespawn;
-
-	// qqshka, add spawn sound to rune if rune respawned, not for player dropped from corpse rune
-	if (on_respawn)
-	{
-		sound(item, CHAN_VOICE, "items/itembk2.wav", 1, ATTN_NORM);	// play respawn sound
+		ent_remove(e);
 	}
 }
 
-void DoTossRune(int rune)
+// Spawns runes (delay for matchstart, no delay for prewar)
+void SpawnRunes(qbool delay)
 {
-	gedict_t *item;
+	int delayTime;
+	delayTime = delay ? RUNE_DELAY_TIME : 0;
 
-	cl_refresh_plus_scores(self);
+	ClearRunes();
 
-	item = spawn();
-	item->ctf_flag = rune;
-	item->classname = "rune";
-	item->s.v.flags = FL_ITEM;
-	item->s.v.solid = SOLID_TRIGGER;
-	item->s.v.movetype = (int) cvar("k_ctf_rune_bounce") & 2 ? MOVETYPE_BOUNCE : MOVETYPE_TOSS;
+	//spawn specific runes at matching spawn points (multiple instances allowed)
+	SpawnRunesByType(CTF_RUNE_RES, RUNE_SPAWN_RES, delayTime);
+	SpawnRunesByType(CTF_RUNE_STR, RUNE_SPAWN_STR, delayTime);
+	SpawnRunesByType(CTF_RUNE_HST, RUNE_SPAWN_HST, delayTime);
+	SpawnRunesByType(CTF_RUNE_RGN, RUNE_SPAWN_RGN, delayTime);
+}
 
-	trap_makevectors(self->s.v.v_angle);
-
-	if (self->s.v.v_angle[0])
+void SpawnRunesByType(int runeflags, char *className, int delay)
+{
+	gedict_t *runeSpawnPoint;
+	if (delay > 0)
 	{
-		item->s.v.velocity[0] = g_globalvars.v_forward[0] * 300 + g_globalvars.v_up[0] * 200;
-		item->s.v.velocity[1] = g_globalvars.v_forward[1] * 300 + g_globalvars.v_up[1] * 200;
-		item->s.v.velocity[2] = g_globalvars.v_forward[2] * 300 + g_globalvars.v_up[2] * 200;
+		for (runeSpawnPoint = world; (runeSpawnPoint = ez_find(runeSpawnPoint, className));)
+		{
+			ScheduleSpawnRune(runeSpawnPoint->s.v.origin, runeflags, delay);
+		}
 	}
 	else
 	{
-		aim(item->s.v.velocity);
-		VectorScale(item->s.v.velocity, 300, item->s.v.velocity);
-		item->s.v.velocity[2] = 200;
+		for (runeSpawnPoint = world; (runeSpawnPoint = ez_find(runeSpawnPoint, className));)
+		{
+			SpawnRune(runeSpawnPoint->s.v.origin, runeflags);
+		}
 	}
-
-	if (rune & CTF_RUNE_RES)
-	{
-		setmodel(item, "progs/end1.mdl");
-	}
-	else if (rune & CTF_RUNE_STR)
-	{
-		setmodel(item, "progs/end2.mdl");
-	}
-	else if (rune & CTF_RUNE_HST)
-	{
-		setmodel(item, "progs/end3.mdl");
-	}
-	else if (rune & CTF_RUNE_RGN)
-	{
-		setmodel(item, "progs/end4.mdl");
-	}
-
-	setorigin(item, self->s.v.origin[0], self->s.v.origin[1], self->s.v.origin[2] - 24);
-	setsize(item, -16, -16, 0, 16, 16, 56);
-	item->s.v.owner = EDICT_TO_PROG(self);
-	item->touch = (func_t) RuneTouch;
-	item->s.v.nextthink = g_globalvars.time + 0.75;
-	item->think = (func_t) RuneResetOwner;
 }
 
-void DropRune(void)
+void SpawnRune(vec3_t origin, int runeflags)
 {
-	if (self->ctf_flag & CTF_RUNE_RES)
+	// spawn new rune entity (at rune spawn location from world/bsp)
+	gedict_t *rune = spawn();
+	rune->classname = "rune";
+	rune->ctf_flag = runeflags;
+	rune->s.v.flags = FL_ITEM;
+	rune->s.v.solid = SOLID_TRIGGER;
+	rune->s.v.movetype = MOVETYPE_NONE;
+
+	setorigin(rune, origin[0], origin[1], origin[2]);
+	SetVector(rune->s.v.velocity, 0, 0, 0);
+
+	// store origin to ensure proper respawn if multiple runes of same type
+	VectorCopy(origin, rune->rune_spawn_origin);
+
+	// set the model to be rendered for the entity
+	if (runeflags & CTF_RUNE_RES)
 	{
-		DoDropRune( CTF_RUNE_RES, false);
-		self->ps.res_time += g_globalvars.time - self->rune_pickup_time;
+		setmodel(rune, "progs/end1.mdl");
+	}
+	else if (runeflags & CTF_RUNE_STR)
+	{
+		setmodel(rune, "progs/end2.mdl");
+	}
+	else if (runeflags & CTF_RUNE_HST)
+	{
+		setmodel(rune, "progs/end3.mdl");
+	}
+	else if (runeflags & CTF_RUNE_RGN)
+	{
+		setmodel(rune, "progs/end4.mdl");
 	}
 
-	if (self->ctf_flag & CTF_RUNE_STR)
-	{
-		DoDropRune( CTF_RUNE_STR, false);
-		self->ps.str_time += g_globalvars.time - self->rune_pickup_time;
-	}
-
-	if (self->ctf_flag & CTF_RUNE_HST)
-	{
-		DoDropRune( CTF_RUNE_HST, false);
-		self->ps.hst_time += g_globalvars.time - self->rune_pickup_time;
-	}
-
-	if (self->ctf_flag & CTF_RUNE_RGN)
-	{
-		DoDropRune( CTF_RUNE_RGN, false);
-		self->ps.rgn_time += g_globalvars.time - self->rune_pickup_time;
-	}
-
-	self->ctf_flag -= (self->ctf_flag & (CTF_RUNE_MASK));
-	// self->s.v.items -= ( (int)self->s.v.items & (CTF_RUNE_MASK) );
+	setsize(rune, -16, -16, 0, 16, 16, 56);
+	rune->touch = (func_t) RuneTouch;
+	sound(rune, CHAN_VOICE, "items/itembk2.wav", 1, ATTN_NORM);	// play respawn sound
 }
 
-void TossRune(void)
+void ScheduleSpawnRune(vec3_t origin, int runeflags, int delay)
 {
-	if (self->ctf_flag & CTF_RUNE_RES)
-	{
-		DoTossRune( CTF_RUNE_RES);
-		self->ps.res_time += g_globalvars.time - self->rune_pickup_time;
-	}
-
-	if (self->ctf_flag & CTF_RUNE_STR)
-	{
-		DoTossRune( CTF_RUNE_STR);
-		self->ps.str_time += g_globalvars.time - self->rune_pickup_time;
-	}
-
-	if (self->ctf_flag & CTF_RUNE_HST)
-	{
-		DoTossRune( CTF_RUNE_HST);
-		self->ps.hst_time += g_globalvars.time - self->rune_pickup_time;
-		self->maxspeed = cvar("sv_maxspeed");
-	}
-
-	if (self->ctf_flag & CTF_RUNE_RGN)
-	{
-		gedict_t *regenrot = spawn();
-		DoTossRune( CTF_RUNE_RGN);
-		self->ps.rgn_time += g_globalvars.time - self->rune_pickup_time;
-		regenrot->s.v.nextthink = g_globalvars.time + 5;
-		regenrot->think = (func_t) RegenLostRot;
-		regenrot->s.v.owner = EDICT_TO_PROG(self);
-	}
-
-	self->ctf_flag -= (self->ctf_flag & (CTF_RUNE_MASK));
-	//self->s.v.items -= ( (int)self->s.v.items & (CTF_RUNE_MASK) );
+	gedict_t *temp = spawn();
+	temp->s.v.nextthink = g_globalvars.time + delay;
+	temp->think = (func_t) RespawnRune;
+	temp->ctf_flag = runeflags;
+	VectorCopy(origin, temp->rune_spawn_origin);
 }
 
-void RegenLostRot(void)
+void RespawnRune(void)
 {
-	other = PROG_TO_EDICT(self->s.v.owner);
-	if ((other->s.v.health < 101) || (other->ctf_flag & CTF_RUNE_RGN)
-			|| ((int)other->s.v.items & IT_SUPERHEALTH))
-	{
-		ent_remove(self);
-
-		return;
-	}
-
-	other->s.v.health--;
-	self->s.v.nextthink = g_globalvars.time + 1;
-}
-
-void RuneResetOwner(void)
-{
-	self->s.v.owner = EDICT_TO_PROG(self);
-	self->think = (func_t) RuneRespawn;
-	self->s.v.nextthink = g_globalvars.time + 90;
-}
-
-void RuneRespawn(void)
-{
-	int rune = self->ctf_flag;
-
+	SpawnRune(self->rune_spawn_origin, self->ctf_flag);
 	ent_remove(self);
-	self = SelectSpawnPoint(GetRuneSpawnName());
-	DoDropRune(rune, true);
+}
+
+void ClearRuneEffect(gedict_t *player)
+{
+	player->ctf_flag &= ~CTF_RUNE_MASK;
+	cl_refresh_plus_scores(player);
+	if (ISLIVE(player))
+	{
+		G_sprint(player, 1, "Your rune effect has worn off.\n");
+	}
 }
 
 void RuneTouch(void)
 {
-	if (other->ct != ctPlayer)
+	if (other->ct != ctPlayer || ISDEAD(other))
 	{
 		return;
 	}
 
-	if (ISDEAD(other))
+	if (!k_practice && match_in_progress != 2)
 	{
 		return;
-	}
-
-	if (!k_practice)
-	{
-		if (match_in_progress != 2)
-		{
-			return;
-		}
 	}
 
 	if (other == PROG_TO_EDICT(self->s.v.owner))
@@ -267,161 +146,53 @@ void RuneTouch(void)
 		return;
 	}
 
-	if (self->think == (func_t)RuneRespawn)
-	{
-		self->s.v.nextthink = g_globalvars.time + 90;
-	}
-
 	if (other->ctf_flag & CTF_RUNE_MASK)
 	{
 		if (g_globalvars.time > other->rune_notify_time)
 		{
 			other->rune_notify_time = g_globalvars.time + 10;
-			G_sprint(other, 1, "You already have a rune. Use \"%s\" to drop\n",
-						redtext("tossrune"));
+			G_sprint(other, 1, "You already have a rune.\n");
 		}
 
 		return;
 	}
 
-	cl_refresh_plus_scores(other);
-
 	other->ctf_flag |= self->ctf_flag;
 	other->rune_pickup_time = g_globalvars.time;
+	other->rune_effect_finished = g_globalvars.time + RUNE_DURATION;
 
-	if (other->ctf_flag & CTF_RUNE_RES)
+	// force refresh player scores
+	cl_refresh_plus_scores(other);
+
+	if (self->ctf_flag & CTF_RUNE_RES)
 	{
-		// other->s.v.items = (int)other->s.v.items | IT_SIGIL1;
 		G_sprint(other, 2, "You got the %s rune\n", redtext("resistance"));
 	}
 
-	if (other->ctf_flag & CTF_RUNE_STR)
+	if (self->ctf_flag & CTF_RUNE_STR)
 	{
-		// other->s.v.items = (int)other->s.v.items | IT_SIGIL2;
 		G_sprint(other, 2, "You got the %s rune\n", redtext("strength"));
 	}
 
-	if (other->ctf_flag & CTF_RUNE_HST)
+	if (self->ctf_flag & CTF_RUNE_HST)
 	{
 		other->maxspeed *= (cvar("k_ctf_rune_power_hst") / 8) + 1;
-		// other->s.v.items = (int)other->s.v.items | CTF_RUNE_HST;
 		G_sprint(other, 2, "You got the %s rune\n", redtext("haste"));
 	}
 
-	if (other->ctf_flag & CTF_RUNE_RGN)
+  if (self->ctf_flag & CTF_RUNE_RGN)
 	{
-		// other->s.v.items = (int)other->s.v.items | CTF_RUNE_RGN;
 		G_sprint(other, 2, "You got the %s rune\n", redtext("regeneration"));
 	}
 
 	sound(other, CHAN_ITEM, "weapons/lock4.wav", 1, ATTN_NORM);
 	stuffcmd(other, "bf\n");
+
+	ScheduleSpawnRune(self->rune_spawn_origin, self->ctf_flag, RUNE_RESPAWN_TIME);
+	
 	ent_remove(self);
 }
 
-char* GetRuneSpawnName(void)
-{
-	char *runespawn;
-
-	if (cvar("k_ctf_based_spawn") == 1)
-	{
-		runespawn = g_random() < 0.5 ? "info_player_team1" : "info_player_team2";
-	}
-	else
-	{
-		// we'll just use the player spawn point selector for runes as well
-		runespawn = "info_player_deathmatch";
-	}
-
-	return runespawn;
-}
-
-// try to find a unique spawn position for a rune given the NULL-terminated
-// list of other runes
-gedict_t* UniqueRuneSpawn(int rune_type, int nrunes, gedict_t **runes)
-{
-	char *spawnname;
-	int i, nspawns;
-	qbool unique;
-	gedict_t *e;
-
-	spawnname = GetRuneSpawnName();
-
-	for (e = world, nspawns = 0; (e = ez_find(e, spawnname)); nspawns++);
-
-	for (i = 0; i < nspawns; i++)
-	{
-		self = SelectSpawnPoint(spawnname);
-
-		unique = true;
-
-		for (i = 0; i < nrunes; i++)
-		{
-			if (runes && self == runes[i])
-			{
-				unique = false;
-				break;
-			}
-		}
-
-		if (unique)
-		{
-			DoDropRune(rune_type, true);
-			return self;
-		}
-	}
-
-	// Unable to find a unique spawn, drop anyway
-	DoDropRune(rune_type, true);
-
-	return self;
-}
-
-// spawn/remove runes
-void SpawnRunes(qbool yes)
-{
-	gedict_t *oself, *e, *runes[4];
-	int nrunes = 0;
-
-	for (e = world; (e = find(e, FOFCLSN, "rune"));)
-	{
-		ent_remove(e);
-	}
-
-	if (!yes)
-	{
-		return;
-	}
-
-	oself = self;
-
-	memset(runes, 0, sizeof(runes));
-
-	if (cvar("k_ctf_rune_power_res") > 0)
-	{
-		runes[nrunes] = UniqueRuneSpawn(CTF_RUNE_RES, nrunes, runes);
-		nrunes++;
-	}
-
-	if (cvar("k_ctf_rune_power_str") > 0)
-	{
-		runes[nrunes] = UniqueRuneSpawn(CTF_RUNE_STR, nrunes, runes);
-		nrunes++;
-	}
-
-	if (cvar("k_ctf_rune_power_hst") > 0)
-	{
-		runes[nrunes] = UniqueRuneSpawn(CTF_RUNE_HST, nrunes, runes);
-		nrunes++;
-	}
-
-	if (cvar("k_ctf_rune_power_rgn") > 0)
-	{
-		UniqueRuneSpawn(CTF_RUNE_RGN, nrunes, runes);
-	}
-
-	self = oself;
-}
 
 void ResistanceSound(gedict_t *player)
 {

@@ -1279,7 +1279,10 @@ void FixCTFItems(void)
 
 	if ((old_k_mode != k_mode) || (k_ctf_runes != cvar("k_ctf_runes")) || (framecount == 2))
 	{
-		SpawnRunes(isCTF() && cvar("k_ctf_runes"));
+		if (isCTF() && cvar("k_ctf_runes"))
+		{
+			SpawnRunes(false); // spawn runes without delay for perusing rune locations in prewar
+		}
 	}
 
 	if ((old_k_mode != k_mode) || (k_ctf_hook != cvar("k_ctf_hook")))

@@ -612,9 +612,9 @@ void teleport_player(gedict_t *player, vec3_t origin, vec3_t angles, int flags);
 #define TELEDEATH(e) ((e)->deathtype == dtTELE1 || (e)->deathtype == dtTELE2 || (e)->deathtype == dtTELE3)
 
 // runes.c
-void DropRune(void);
-void SpawnRunes(qbool yes);
-void TossRune(void);
+void ClearRunes(void);
+void SpawnRunes(qbool delay);
+void ClearRuneEffect(gedict_t *player);
 void ResistanceSound(gedict_t *player);
 void HasteSound(gedict_t *player);
 void RegenerationSound(gedict_t *player);

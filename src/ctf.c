@@ -740,8 +740,13 @@ void norunes(void)
 	// In matchless mode, toggling runes normally won't do anything since match is already in progress. Call this to handle this scenario.
 	if (k_matchLess)
 	{
+		if(cvar("k_ctf_runes"))
+		{
+			SpawnRunes(false); // spawn runes without delay, so their location can be seen in prewar
+		}
+
 		// If a player is carrying a rune when runes are disabled, get rid of it
-		if (!cvar("k_ctf_runes"))
+		else
 		{
 			gedict_t *p;
 			for (p = world; (p = find_plr(p));)
@@ -750,8 +755,6 @@ void norunes(void)
 				p->maxspeed = cvar("sv_maxspeed"); // Reset speed, in case was carrying haste
 			}
 		}
-
-		SpawnRunes(cvar("k_ctf_runes")); // Toggle runes
 	}
 }
 
@@ -841,7 +844,7 @@ void mctf(void)
 			}
 		}
 
-		SpawnRunes(0);
+		ClearRunes();
 		AddHook(false);
 	}
 }
