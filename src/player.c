@@ -137,31 +137,32 @@ void muzzleflash(void)
 
 void player_chain1(void)
 {
-	self->s.v.frame = 137;
+	self->s.v.frame = 136;
 	self->think = (func_t) player_chain2;
-	self->s.v.nextthink = next_frame();
-	self->s.v.weaponframe = 2;
+	self->s.v.nextthink = g_globalvars.time + 0.1;
+	self->s.v.weaponframe = 1;
 	GrappleThrow();
 }
 
 void player_chain2(void)
 {
-	self->s.v.frame = 138;
+	self->s.v.frame = 137;
 	self->think = (func_t) player_chain3;
-	self->s.v.nextthink = next_frame();
-	self->s.v.weaponframe = 3;
+	self->s.v.nextthink = g_globalvars.time + 0.1;
+	self->s.v.weaponframe = 2;
 }
 
 void player_chain3(void)
 {
-	self->s.v.frame = 139;
+	self->s.v.frame = 138;
 	self->s.v.weaponframe = 3;
 
 	if (!self->hook_out)
 	{
-		player_chain5();
+		self->think = (func_t) player_chain_retract1;
+		self->s.v.nextthink = g_globalvars.time + 0.1;
 	}
-	else if (vlen(self->s.v.velocity) >= 750)
+	else if (self->on_hook)
 	{
 		player_chain4();
 	}
@@ -183,11 +184,13 @@ void player_chain4(void)
 
 	if (!self->hook_out)
 	{
-		player_chain5();
+		self->think = (func_t) player_chain_retract1;
+		self->s.v.nextthink = g_globalvars.time + 0.2;
 	}
-	else if (vlen(self->s.v.velocity) < 750)
+	else if (!self->on_hook)
 	{
-		player_chain3();
+		self->think = (func_t) player_chain3;
+		self->s.v.nextthink = g_globalvars.time + 0.2;
 	}
 	else
 	{
@@ -196,14 +199,26 @@ void player_chain4(void)
 	}
 }
 
-void player_chain5(void)
+void player_chain_retract1(void)
 {
 	self->s.v.frame = 140;
+	self->s.v.weaponframe = 3;
+	self->think = (func_t) player_chain_retract2;
+	
+	// align animation with attack finished time
+	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ? 
+		g_globalvars.time + (0.2 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.2;
+}
+
+void player_chain_retract2(void)
+{
+	self->s.v.frame = 141;
 	self->s.v.weaponframe = 5;
 	self->walkframe = 0;
 
 	self->think = (func_t) player_run;
-	self->s.v.nextthink = next_frame();
+	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ? 
+		g_globalvars.time + (0.13 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.13;
 }
 
 void player_shot1(void)

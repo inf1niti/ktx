@@ -311,6 +311,7 @@ void SP_worldspawn(void)
 		trap_precache_sound("weapons/chain2.wav");
 		trap_precache_sound("weapons/chain3.wav");
 		trap_precache_sound("weapons/bounce2.wav");
+		trap_precache_sound("knight/sword1.wav");
 		trap_precache_sound("misc/flagtk.wav");
 		trap_precache_sound("misc/flagcap.wav");
 		trap_precache_sound("doors/runetry.wav");

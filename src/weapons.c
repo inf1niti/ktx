@@ -2241,8 +2241,6 @@ void W_Attack(void)
 			{
 				player_chain1();
 			}
-
-			self->attack_finished = g_globalvars.time + 0.1;
 			break;
 	}
 }
