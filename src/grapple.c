@@ -1,20 +1,20 @@
 #include "g_local.h"
 
-#define PULL_SPEED      648
-#define INIT_PULL_SPEED 244
+#define HOOK_FIRE_RATE  0.33
+#define PULL_SPEED      650
+#define INIT_PULL_SPEED 350
 #define THROW_SPEED     900
-#define FIRE_RATE       0.24
-#define ACCEL_TIME      0.692
+#define ACCEL_TIME      0.600
 #define EPSILON         1e-6F
 
 #define SLACK_DELAY     0.3
-#define SLACK_DURATION  0.9
+#define SLACK_DURATION  1.1
 
-#define MIN_GRAVITY     0.34
-#define MAX_GRAVITY     0.89
+#define MIN_GRAVITY     0.265
+#define MAX_GRAVITY     0.765
 
-#define MIN_INERTIA     0.05
-#define MAX_INERTIA     0.5
+#define MIN_INERTIA     0.0525
+#define MAX_INERTIA     0.525
 
 void SpawnBlood(vec3_t dest, float damage);
 
@@ -48,20 +48,50 @@ void GrappleReset(gedict_t *rhook)
 {
 	gedict_t *owner = PROG_TO_EDICT(rhook->s.v.owner);
 	if (owner == world) { return; }
-
-	sound(owner, CHAN_NO_PHS_ADD + CHAN_WEAPON, "weapons/bounce2.wav", 1, ATTN_NORM);
+	
 	owner->on_hook = false;
 	owner->hook_out = false;
-	owner->s.v.weaponframe = 0;
+	rhook->think = (func_t)GrappleRetract;
+	rhook->s.v.nextthink = next_frame();
+	sound(rhook, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
 
+	// attack only finishes when hook is reset/released (continuous attack)
 	owner->attack_finished = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + ((FIRE_RATE / 2) / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + (FIRE_RATE / 2);
+		g_globalvars.time + ((HOOK_FIRE_RATE) / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + (HOOK_FIRE_RATE);
 
 	owner->hook_reset_time = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + (FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + FIRE_RATE;
+		g_globalvars.time + (HOOK_FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + HOOK_FIRE_RATE;
+}
 
-	rhook->think = (func_t) SUB_Remove;
-	rhook->s.v.nextthink = next_frame();
+void GrappleRetract(void)
+{
+	float hookDistance, returnSpeed;
+	vec3_t hookVector, uv_hook;
+	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
+
+	if (!owner || owner == world)
+	{
+		self->think = (func_t)SUB_Remove;
+		self->s.v.nextthink = next_frame();
+		return; 
+	}
+
+	VectorSubtract(owner->s.v.origin, self->s.v.origin, hookVector);
+	VectorCopy(hookVector, uv_hook);
+	hookDistance = VectorNormalize(uv_hook);
+
+	if (g_globalvars.time >= owner->attack_finished || hookDistance <= 160)
+	{
+		self->think = (func_t)SUB_Remove;
+		self->s.v.nextthink = next_frame();
+		return;
+	}
+
+	returnSpeed = (hookDistance - 160) / g_globalvars.frametime;
+	VectorScale(hookVector, returnSpeed, self->s.v.velocity);
+
+	self->think = (func_t)GrappleRetract;
+	self->s.v.nextthink = next_frame();
 }
 
 void GrappleTrack(void)
@@ -315,9 +345,10 @@ void GrappleService(void)
 	gedict_t *target;
 	vec3_t hookVector, transVector, radialVel, tangentialVel, uv_self, uv_hook, uv_gravity;
 
-	float distanceToHook, hasteMultiplier, playerSpeed, playerInfluence, minPull, maxPull,
-		targetSpeed, speedDiff, radialSpeed, radialFactor, gravityInfluence, timeElapsed,
-		timeFraction, magnitude, lerpFactor, overshootThreshold, finalSpeed, finalSpeedCap;
+	float distanceToHook, hasteMultiplier, playerSpeed, playerInfluence, minPull, maxPull, targetSpeed,
+		speedDiff, radialSpeed, radialFactor, gravityInfluence, timeElapsed, timeFraction, magnitude,
+		lerpFactor, overshootThreshold, /*radialDistance, radialZ, minAngle, maxAngle, minFactor, maxFactor, 
+		forwardView, fadeFactor,*/ finalSpeed, finalSpeedCap;
 
 	// Drop the hook if player lets go of fire
 	if (!self->s.v.button0)
@@ -330,10 +361,10 @@ void GrappleService(void)
 	}
 
 	// remove onground constantly
-	if ((int)self->s.v.flags & FL_ONGROUND)
-	{
-		self->s.v.flags -= FL_ONGROUND;
-	}
+	// if ((int)self->s.v.flags & FL_ONGROUND)
+	// {
+	// 	self->s.v.flags -= FL_ONGROUND;
+	// }
 
 	// track anchor point, or player (if hooked to enemy)
 	target = PROG_TO_EDICT(self->hook->s.v.enemy);
@@ -454,6 +485,51 @@ void GrappleService(void)
 		);
 	}
 
+	// // CLAMP BACKWARDS MOVEMENT (better air control physics with +moveback)
+	// VectorCopy(self->s.v.velocity, transVector);
+
+	// radialDistance = DotProduct(transVector, uv_hook);
+	// radialZ = radialDistance * uv_hook[2];
+
+	// VectorScale(uv_hook, radialDistance, radialVel);
+	// VectorSubtract(transVector, radialVel, tangentialVel);
+
+	// // min and max angles for clamping
+	// minAngle = 10;
+	// maxAngle = 70;
+
+	// minFactor = sin(minAngle * (M_PI / 180));
+	// maxFactor = sin(maxAngle * (M_PI / 180));
+
+	// // compare viewangle with velocity to guesstimate if +moveback is pressed :/
+	// trap_makevectors(self->s.v.v_angle);
+	// forwardView = DotProduct(transVector, g_globalvars.v_forward);
+
+	// fadeFactor = uv_hook[2] <= minFactor ?
+	// 		0 : uv_hook[2] >= maxFactor ? 
+	// 		1 : (uv_hook[2] - minFactor) / (maxFactor - minFactor);
+
+	// if (fadeFactor > 0 && forwardView < 0)
+	// {
+	// 	if(radialDistance < 0 && distanceToHook > overshootThreshold)
+	// 	{
+	// 		radialDistance += (fabs(radialDistance) * fadeFactor * 0.75);
+	// 		VectorScale(uv_hook, radialDistance, radialVel);
+	// 		VectorAdd(radialVel, tangentialVel, transVector);
+	// 	}
+
+	// 	// recompute
+	// 	radialDistance = DotProduct(transVector, uv_hook);
+	// 	radialZ = radialDistance * uv_hook[2];
+		
+	// 	if(transVector[2] > radialZ)
+	// 	{
+	// 		transVector[2] = radialZ;
+	// 	}
+	// }
+	// VectorCopy(transVector, self->s.v.velocity);
+
+
 	// SPEED CAP
 	finalSpeedCap = (self->ctf_flag & CTF_RUNE_HST) ? 
 			PULL_SPEED * 1.125 * hasteMultiplier : PULL_SPEED * 1.125;
@@ -482,7 +558,7 @@ void GrappleThrow(void)
 	g_globalvars.msg_entity = EDICT_TO_PROG(self);
 	WriteByte( MSG_ONE, SVC_SMALLKICK);
 
-	sound(self, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
+	sound(self, CHAN_WEAPON, "knight/sword1.wav", 1, ATTN_NORM);
 
 	newmis = spawn();
 	g_globalvars.newmis = EDICT_TO_PROG(newmis);

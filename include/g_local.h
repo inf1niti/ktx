@@ -923,6 +923,7 @@ void StatsToFile(void);
 void GrappleThrow(void);
 void GrappleService(void);
 void GrappleReset(gedict_t *rhook);
+void GrappleRetract(void);
 void CancelHook(gedict_t *owner);
 float OscilationFactor(float length, float threshold, float vRad);
 float VectorAlignment(vec3_t vector1, vec3_t vector2);
