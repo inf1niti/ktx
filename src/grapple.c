@@ -1,20 +1,20 @@
 #include "g_local.h"
 
-#define HOOK_FIRE_RATE  0.33
-#define PULL_SPEED      650
-#define INIT_PULL_SPEED 350
-#define THROW_SPEED     900
-#define ACCEL_TIME      0.600
+#define HOOK_FIRE_RATE  0.325
+#define PULL_SPEED      666
+#define INIT_PULL_SPEED 360
+#define THROW_SPEED     880
+#define ACCEL_TIME      0.546
 #define EPSILON         1e-6F
 
-#define SLACK_DELAY     0.3
-#define SLACK_DURATION  1.1
+#define SLACK_DELAY     0.325
+#define SLACK_DURATION  1.105
 
-#define MIN_GRAVITY     0.265
-#define MAX_GRAVITY     0.765
+#define MIN_GRAVITY     0.25
+#define MAX_GRAVITY     0.75
 
-#define MIN_INERTIA     0.0525
-#define MAX_INERTIA     0.525
+#define MIN_INERTIA     0.05
+#define MAX_INERTIA     0.5
 
 void SpawnBlood(vec3_t dest, float damage);
 
@@ -53,7 +53,15 @@ void GrappleReset(gedict_t *rhook)
 	owner->hook_out = false;
 	rhook->think = (func_t)GrappleRetract;
 	rhook->s.v.nextthink = next_frame();
-	sound(rhook, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
+
+	if ((int)owner->s.v.items & IT_INVISIBILITY)
+	{
+		sound(rhook, CHAN_WEAPON, "weapons/ax1.wav", 0.85, ATTN_IDLE);
+	}
+	else
+	{
+		sound(rhook, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
+	}
 
 	// attack only finishes when hook is reset/released (continuous attack)
 	owner->attack_finished = (self->ctf_flag & CTF_RUNE_HST) ? 
@@ -215,7 +223,7 @@ void UpdateChain(void)
 	goal = PROG_TO_EDICT(self->s.v.goalentity);
 	goal2 = PROG_TO_EDICT(goal->s.v.goalentity);
 
-	if(vlen(temp) <= 100 && owner->on_hook)
+	if (vlen(temp) <= 100 && owner->on_hook)
 	{
 		// If there is a chain, ditch it now. We're close enough. 
 		// Having extra entities lying around is never a good idea.
@@ -239,6 +247,19 @@ void UpdateChain(void)
 	setorigin(self, PASSVEC3(t1));
 	setorigin(goal, PASSVEC3(t2));
 	setorigin(goal2, PASSVEC3(t3));
+
+	if ((int)owner->s.v.items & IT_INVISIBILITY)
+	{
+		ExtFieldSetAlpha(self, 0.125);
+		ExtFieldSetAlpha(goal, 0.125);
+		ExtFieldSetAlpha(goal, 0.125);
+	}
+	else
+	{
+		ExtFieldSetAlpha(self, 1);
+		ExtFieldSetAlpha(goal, 1);
+		ExtFieldSetAlpha(goal, 1);
+	}
 
 	self->s.v.nextthink = next_frame();
 }
@@ -302,7 +323,14 @@ void GrappleAnchor(void)
 
 	else
 	{
-		sound(self, CHAN_WEAPON, "player/axhit2.wav", 1, ATTN_NORM);
+		if ((int)owner->s.v.items & IT_INVISIBILITY)
+		{
+			sound(self, CHAN_WEAPON, "weapons/tink1.wav", 1, ATTN_IDLE);
+		}
+		else
+		{
+			sound(self, CHAN_WEAPON, "player/axhit2.wav", 1, ATTN_NORM);
+		}
 
 		// One point of damage inflicted upon impact. Subsequent
 		// damage will only be done to PLAYERS... this way secret
@@ -377,6 +405,15 @@ void GrappleService(void)
 		VectorSubtract(self->hook->s.v.origin, self->s.v.origin, hookVector);
 	}
 
+	if ((int)self->s.v.items & IT_INVISIBILITY)
+	{
+		ExtFieldSetAlpha(self->hook, 0.125);
+	}
+	else
+	{
+		ExtFieldSetAlpha(self->hook, 1);
+	}
+
 	// CORE VELOCITIES
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
@@ -447,7 +484,7 @@ void GrappleService(void)
 		self->hook_awaytime += g_globalvars.frametime;
 		timeElapsed = self->hook_awaytime - SLACK_DELAY;
 
-		if(self->hook_awaytime > SLACK_DELAY) {
+		if (self->hook_awaytime > SLACK_DELAY) {
 			timeFraction = bound(0, timeElapsed / SLACK_DURATION, 1);
 			lerpFactor = MIN_INERTIA + (abs(playerInfluence) * timeFraction) * (MAX_INERTIA - MIN_INERTIA);
 
@@ -554,19 +591,35 @@ void GrappleThrow(void)
 	}
 
 	hasteMultiplier =	(cvar("k_ctf_rune_power_hst") / 16) + 1;
-	
 	g_globalvars.msg_entity = EDICT_TO_PROG(self);
 	WriteByte( MSG_ONE, SVC_SMALLKICK);
+	
+	if ((int)self->s.v.items & IT_INVISIBILITY)
+	{
+		sound(self, CHAN_WEAPON, "knight/sword2.wav", 0.7, ATTN_IDLE);
+	}
+	else
+	{
+		sound(self, CHAN_WEAPON, "knight/sword1.wav", 0.9, ATTN_NORM);
+	}
 
-	sound(self, CHAN_WEAPON, "knight/sword1.wav", 1, ATTN_NORM);
 
 	newmis = spawn();
 	g_globalvars.newmis = EDICT_TO_PROG(newmis);
 	newmis->s.v.movetype = MOVETYPE_FLYMISSILE;
 	newmis->s.v.solid = SOLID_BBOX;
 	newmis->s.v.owner = EDICT_TO_PROG(self);
-	self->hook = newmis;
 	newmis->classname = "hook";
+	if ((int)self->s.v.items & IT_INVISIBILITY)
+	{
+		ExtFieldSetAlpha(newmis, 0.125);
+	}
+	else
+	{
+		ExtFieldSetAlpha(newmis, 1);
+	}
+
+	self->hook = newmis;
 	self->hook_cancel_time = 0;
 	self->hook_awaytime = 0;
 
@@ -590,7 +643,10 @@ void GrappleThrow(void)
 	// Adjust the throw speed based on alignment and haste multiplier
 	if (self->ctf_flag & CTF_RUNE_HST)
 	{
-		HasteSound(self);
+		if (!((int)self->s.v.items & IT_INVISIBILITY) || (self->s.v.weapon != IT_HOOK))
+		{
+			HasteSound(self);
+		}
 		VectorScale(uv_throw, THROW_SPEED * hasteMultiplier * alignmentFactor, initialVelocity);
 		SetVector(newmis->s.v.avelocity, 300 * hasteMultiplier, 300 * hasteMultiplier, 300 * hasteMultiplier);
 	}

@@ -75,6 +75,7 @@ void spawn_item_flag(void)
 	self->cnt2 = 0.0;
 	VectorCopy(self->s.v.angles, self->mangle);
 	self->s.v.effects = (int)self->s.v.effects | EF_DIMLIGHT;
+	ExtFieldSetAlpha(self, 1);
 
 	if (!droptofloor(self))
 	{
@@ -225,6 +226,7 @@ void RegenFlag(gedict_t *flag)
 	flag->s.v.nextthink = g_globalvars.time + 0.2;
 	flag->s.v.groundentity = EDICT_TO_PROG(world);
 	flag->touch = (func_t) FlagTouch;
+	ExtFieldSetAlpha(flag, 1);
 }
 
 // show/hide flag
@@ -463,6 +465,15 @@ void FlagTouch(void)
 	owner = PROG_TO_EDICT(self->s.v.owner);
 	owner->ps.pickups++;
 
+	if ((int)other->s.v.items & IT_INVISIBILITY)
+	{
+		ExtFieldSetAlpha(self, 0.2);
+	}
+	else
+	{
+		ExtFieldSetAlpha(self, 1);
+	}
+
 	G_bprint(2, "%s", other->netname);
 	if (streq(getteam(other), "red"))
 	{
@@ -554,6 +565,7 @@ void DropFlag(gedict_t *flag, qbool tossed)
 	flag->s.v.movetype = MOVETYPE_TOSS;
 	setmodel(flag, flag->mdl);
 	setsize(flag, -16, -16, 0, 16, 16, 74);
+	ExtFieldSetAlpha(flag, 1);
 	flag->super_time = g_globalvars.time + FLAG_RETURN_TIME;
 	if (tossed)
 	{
