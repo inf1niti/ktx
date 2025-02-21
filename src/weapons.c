@@ -2951,26 +2951,33 @@ void SuperDamageSound(void)
 {
 	if (self->super_damage_finished > g_globalvars.time)
 	{
-		if (self->super_sound < g_globalvars.time)
+		if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY) || (self->s.v.weapon != IT_HOOK))
 		{
-			self->super_sound = g_globalvars.time + 1;
-			// Play 8x sound if quad + strength rune
-			if (self->ctf_flag & CTF_RUNE_STR)
+			if (self->super_sound < g_globalvars.time)
 			{
-				sound(self, CHAN_AUTO, "rune/rune22.wav", 1, ATTN_NORM);
-			}
-			else
-			{
-				sound(self, CHAN_AUTO, "items/damage3.wav", 1, ATTN_NORM);
+				self->super_sound = g_globalvars.time + 1;
+				
+				// Play 8x sound if quad + strength rune
+				if (self->ctf_flag & CTF_RUNE_STR)
+				{
+					sound(self, CHAN_AUTO, "rune/rune22.wav", 1, ATTN_NORM);
+				}
+				else
+				{
+					sound(self, CHAN_AUTO, "items/damage3.wav", 1, ATTN_NORM);
+				}
 			}
 		}
 	}
 	else if (self->ctf_flag & CTF_RUNE_STR)
 	{
-		if (self->super_sound < g_globalvars.time)
+		if (!((int)self->s.v.items & IT_INVISIBILITY) || (self->s.v.weapon != IT_HOOK))
 		{
-			self->super_sound = g_globalvars.time + 1;
-			sound(self, CHAN_AUTO, "rune/rune2.wav", 1, ATTN_NORM);
+			if (self->super_sound < g_globalvars.time)
+			{
+				self->super_sound = g_globalvars.time + 1;
+				sound(self, CHAN_AUTO, "rune/rune2.wav", 1, ATTN_NORM);
+			}
 		}
 	}
 

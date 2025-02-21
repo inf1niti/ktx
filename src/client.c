@@ -2519,18 +2519,13 @@ void PlayerJump(void)
 		{
 			self->swim_flag = g_globalvars.time + 1;
 
-			// Yawnmode: don't play swimming sound to cut older clients without smartjump some slack
-			// - Molgrum
-			if (!k_yawnmode)
+			if (g_random() < 0.5)
 			{
-				if (g_random() < 0.5)
-				{
-					sound(self, CHAN_BODY, "misc/water1.wav", 1, ATTN_NORM);
-				}
-				else
-				{
-					sound(self, CHAN_BODY, "misc/water2.wav", 1, ATTN_NORM);
-				}
+				sound(self, CHAN_BODY, "misc/water1.wav", 1, ATTN_NORM);
+			}
+			else
+			{
+				sound(self, CHAN_BODY, "misc/water2.wav", 1, ATTN_NORM);
 			}
 		}
 
@@ -2566,7 +2561,14 @@ void PlayerJump(void)
 		//crt - get rid of jump sound for spec
 		if (!isRA() || (isWinner(self) || isLoser(self)))
 		{
-			sound(self, CHAN_BODY, "player/plyrjmp8.wav", 1, ATTN_NORM);
+			if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
+			{
+				sound(self, CHAN_BODY, "player/plyrjmp8.wav", 1, ATTN_NORM);
+			}
+			else
+			{
+				sound(self, CHAN_BODY, "hknight/hit.wav", 0.5, ATTN_IDLE);				
+			}
 		}
 
 		// JUMPBUG[
@@ -2678,7 +2680,10 @@ void WaterMove(void)
 		if (((int)(self->s.v.flags)) & FL_INWATER)
 		{
 			// play leave water sound
-			sound(self, CHAN_BODY, "misc/outwater.wav", 1, ATTN_NORM);
+			if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
+			{
+				sound(self, CHAN_BODY, "misc/outwater.wav", 1, ATTN_NORM);
+			}
 			self->s.v.flags -= FL_INWATER;
 		}
 
@@ -2723,22 +2728,24 @@ void WaterMove(void)
 
 	if (!(((int)(self->s.v.flags)) & FL_INWATER))
 	{
-		// player enter water sound
-		if (self->s.v.watertype == CONTENT_LAVA)
+		if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
 		{
-			sound(self, CHAN_BODY, "player/inlava.wav", 1, ATTN_NORM);
-		}
+			// player enter water sound
+			if (self->s.v.watertype == CONTENT_LAVA)
+			{
+				sound(self, CHAN_BODY, "player/inlava.wav", 1, ATTN_NORM);
+			}
 
-		if (self->s.v.watertype == CONTENT_WATER)
-		{
-			sound(self, CHAN_BODY, "player/inh2o.wav", 1, ATTN_NORM);
-		}
+			if (self->s.v.watertype == CONTENT_WATER)
+			{
+				sound(self, CHAN_BODY, "player/inh2o.wav", 1, ATTN_NORM);
+			}
 
-		if (self->s.v.watertype == CONTENT_SLIME)
-		{
-			sound(self, CHAN_BODY, "player/slimbrn2.wav", 1, ATTN_NORM);
+			if (self->s.v.watertype == CONTENT_SLIME)
+			{
+				sound(self, CHAN_BODY, "player/slimbrn2.wav", 1, ATTN_NORM);
+			}
 		}
-
 		self->s.v.flags += FL_INWATER;
 		self->dmgtime = 0;
 	}
@@ -3550,6 +3557,8 @@ void PlayerPreThink(void)
 {
 	float r;
 	qbool zeroFps = false;
+	gedict_t *flag; // ctf flag
+	char *classname;
 	int items;
 
 	if (self->k_timingWarnTime)
@@ -3751,6 +3760,31 @@ void PlayerPreThink(void)
 		GrappleService();
 	}
 
+	if (self->ctf_flag & CTF_FLAG)
+	{
+		if (streq(getteam(self), "red"))
+		{
+			classname = "item_flag_team2";
+		}
+		else
+		{
+			classname = "item_flag_team1";
+		}
+
+		flag = find(world, FOFCLSN, classname);
+		if (flag)
+		{
+			if((int)self->s.v.items & IT_INVISIBILITY)
+			{
+				ExtFieldSetAlpha(flag, 0.2);
+			}
+			else
+			{
+				ExtFieldSetAlpha(flag, 1);
+			}
+		}
+	}
+
   if ((self->ctf_flag & CTF_RUNE_MASK) && (self->rune_effect_finished < g_globalvars.time))
   {
     ClearRuneEffect(self);
@@ -3799,11 +3833,13 @@ void PlayerPreThink(void)
 				{
 					self->s.v.ammo_rockets += 1;
 					self->regen_time += 3;
+					RegenerationSound(self);
 				}
 				else if ((self->s.v.ammo_cells < 5) && (items & IT_LIGHTNING))
 				{
 					self->s.v.ammo_cells += 1;
 					self->regen_time += 2;
+					RegenerationSound(self);
 				}
 				else if ((self->s.v.ammo_nails < 20) && (items & IT_NAILGUN || items & IT_SUPER_NAILGUN))
 				{
@@ -3816,6 +3852,7 @@ void PlayerPreThink(void)
 						self->s.v.ammo_nails += 2;
 					}
 					self->regen_time += 1;
+					RegenerationSound(self);
 				}
 			}
 		}
@@ -4295,7 +4332,10 @@ void CheckLand(void)
 
 		if (self->s.v.watertype == CONTENT_WATER)
 		{
-			sound(self, CHAN_BODY, "player/h2ojump.wav", 1, ATTN_NORM);
+			if  (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
+			{
+				sound(self, CHAN_BODY, "player/h2ojump.wav", 1, ATTN_NORM);
+			}
 		}
 		else if (self->jump_flag < jumpf_flag)
 		{
@@ -4312,7 +4352,10 @@ void CheckLand(void)
 
 			self->deathtype = dtFALL;
 			T_Damage(self, world, world, 5);
-			sound(self, CHAN_VOICE, "player/land2.wav", 1, ATTN_NORM);
+			if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
+			{
+				sound(self, CHAN_VOICE, "player/land2.wav", 1, ATTN_NORM);
+			}
 
 			if (gre && (gre->s.v.takedamage == DAMAGE_AIM) && (gre != self))
 			{
@@ -4323,7 +4366,10 @@ void CheckLand(void)
 		}
 		else
 		{
-			sound(self, CHAN_VOICE, "player/land.wav", 1, ATTN_NORM);
+			if (!isCTF() || !((int)self->s.v.items & IT_INVISIBILITY))
+			{
+				sound(self, CHAN_VOICE, "player/land.wav", 1, ATTN_NORM);
+			}
 		}
 	}
 

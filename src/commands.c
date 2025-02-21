@@ -4369,9 +4369,9 @@ const char ctf_um_init[] =
 	"k_exttime 5\n"
 	"k_mode 4\n"
 	"k_ctf_based_spawn 3\n"				// team based spawn
-	"k_ctf_hook 1\n"				// hook off
-	"k_ctf_runes 1\n"				// runes off
-	"k_ctf_ga 0\n"					// green armor on
+	"k_ctf_hook 1\n"				// hook on
+	"k_ctf_runes 1\n"				// runes on
+	"k_ctf_ga 0\n"					// green armor off
 ;
 
 const char wipeout_um_init[] =

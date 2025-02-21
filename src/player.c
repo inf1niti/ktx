@@ -160,7 +160,7 @@ void player_chain3(void)
 	if (!self->hook_out)
 	{
 		self->think = (func_t) player_chain_retract1;
-		self->s.v.nextthink = g_globalvars.time + 0.1;
+		self->s.v.nextthink = next_frame();
 	}
 	else if (self->on_hook)
 	{
@@ -185,12 +185,12 @@ void player_chain4(void)
 	if (!self->hook_out)
 	{
 		self->think = (func_t) player_chain_retract1;
-		self->s.v.nextthink = g_globalvars.time + 0.2;
+		self->s.v.nextthink = next_frame();
 	}
 	else if (!self->on_hook)
 	{
 		self->think = (func_t) player_chain3;
-		self->s.v.nextthink = g_globalvars.time + 0.2;
+		self->s.v.nextthink = next_frame();
 	}
 	else
 	{
@@ -207,7 +207,7 @@ void player_chain_retract1(void)
 	
 	// align animation with attack finished time
 	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + (0.2 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.2;
+		g_globalvars.time + (0.195 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.195;
 }
 
 void player_chain_retract2(void)
