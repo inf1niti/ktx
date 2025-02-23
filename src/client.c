@@ -1852,12 +1852,12 @@ void PutClientInServer(void)
 			}
 			else if (random <= 0.733)
 			{
-				SelectSpawnPoint(streq(getteam(self), "red") ?
+				spot = SelectSpawnPoint(streq(getteam(self), "red") ?
 					"info_player_team1_deathmatch" : "info_player_team2_deathmatch");
 			}
 			else
 			{
-				SelectSpawnPoint(streq(getteam(self), "red") ?
+				spot = SelectSpawnPoint(streq(getteam(self), "red") ?
 				"info_player_team2_deathmatch" : "info_player_team1_deathmatch");
 			}
 		}
