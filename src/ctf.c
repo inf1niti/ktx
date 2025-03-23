@@ -465,15 +465,6 @@ void FlagTouch(void)
 	owner = PROG_TO_EDICT(self->s.v.owner);
 	owner->ps.pickups++;
 
-	if ((int)other->s.v.items & IT_INVISIBILITY)
-	{
-		ExtFieldSetAlpha(self, 0.2);
-	}
-	else
-	{
-		ExtFieldSetAlpha(self, 1);
-	}
-
 	G_bprint(2, "%s", other->netname);
 	if (streq(getteam(other), "red"))
 	{
@@ -486,6 +477,14 @@ void FlagTouch(void)
 		owner->s.v.effects = (int)owner->s.v.effects | EF_FLAG1;
 	}
 	setmodel(self, "");
+	if ((int)owner->s.v.items & IT_INVISIBILITY)
+	{
+		ExtFieldSetAlpha(self, 0.2);
+	}
+	else
+	{
+		ExtFieldSetAlpha(self, 1);
+	}
 }
 
 void FlagResetOwner(void)
@@ -524,6 +523,39 @@ void PlayerDropFlag(gedict_t *player, qbool tossed)
 	if (flag)
 	{
 		DropFlag(flag, tossed);
+	}
+}
+
+void PlayerSetFlagTransparency(gedict_t *player, qbool transparent)
+{
+	gedict_t *flag;
+	char *classname;
+
+	if (!(player->ctf_flag & CTF_FLAG))
+	{
+		return;
+	}
+
+	if (streq(getteam(player), "red"))
+	{
+		classname = "item_flag_team2";
+	}
+	else
+	{
+		classname = "item_flag_team1";
+	}
+
+	flag = find(world, FOFCLSN, classname);
+	if (flag)
+	{
+		if (transparent)
+		{
+			ExtFieldSetAlpha(flag, 0.2);
+		}
+		else
+		{
+			ExtFieldSetAlpha(flag, 1);
+		}
 	}
 }
 

@@ -3557,8 +3557,6 @@ void PlayerPreThink(void)
 {
 	float r;
 	qbool zeroFps = false;
-	gedict_t *flag; // ctf flag
-	char *classname;
 	int items;
 
 	if (self->k_timingWarnTime)
@@ -3760,31 +3758,6 @@ void PlayerPreThink(void)
 		GrappleService();
 	}
 
-	if (self->ctf_flag & CTF_FLAG)
-	{
-		if (streq(getteam(self), "red"))
-		{
-			classname = "item_flag_team2";
-		}
-		else
-		{
-			classname = "item_flag_team1";
-		}
-
-		flag = find(world, FOFCLSN, classname);
-		if (flag)
-		{
-			if((int)self->s.v.items & IT_INVISIBILITY)
-			{
-				ExtFieldSetAlpha(flag, 0.2);
-			}
-			else
-			{
-				ExtFieldSetAlpha(flag, 1);
-			}
-		}
-	}
-
   if ((self->ctf_flag & CTF_RUNE_MASK) && (self->rune_effect_finished < g_globalvars.time))
   {
     ClearRuneEffect(self);
@@ -3832,12 +3805,16 @@ void PlayerPreThink(void)
 				if ((self->s.v.ammo_rockets < 3) && (items & IT_GRENADE_LAUNCHER || items & IT_ROCKET_LAUNCHER))
 				{
 					self->s.v.ammo_rockets += 1;
+					W_SetCurrentAmmo();
+
 					self->regen_time += 3;
 					RegenerationSound(self);
 				}
 				else if ((self->s.v.ammo_cells < 5) && (items & IT_LIGHTNING))
 				{
 					self->s.v.ammo_cells += 1;
+					W_SetCurrentAmmo();
+
 					self->regen_time += 2;
 					RegenerationSound(self);
 				}
@@ -3846,10 +3823,12 @@ void PlayerPreThink(void)
 					if (self->s.v.ammo_nails > 18)
 					{
 						self->s.v.ammo_nails = 20;
+						W_SetCurrentAmmo();
 					}
 					else
 					{
 						self->s.v.ammo_nails += 2;
+						W_SetCurrentAmmo();
 					}
 					self->regen_time += 1;
 					RegenerationSound(self);
@@ -3923,6 +3902,10 @@ void CheckPowerups(void)
 			}
 
 			self->s.v.modelindex = modelindex_player;	// don't use eyes
+			if (self->ctf_flag & CTF_FLAG)
+			{
+				PlayerSetFlagTransparency(self, false);
+			}
 
 			adjust_pickup_time(&self->it_pickup_time[itRING], &self->ps.itm[itRING].time);
 
@@ -3934,6 +3917,10 @@ void CheckPowerups(void)
 			self->s.v.frame = 0;
 			self->vw_index = 0;
 			self->s.v.modelindex = modelindex_eyes;
+			if (self->ctf_flag & CTF_FLAG)
+			{
+				PlayerSetFlagTransparency(self, true);
+			}
 		}
 	}
 

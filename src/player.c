@@ -207,7 +207,7 @@ void player_chain_retract1(void)
 	
 	// align animation with attack finished time
 	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + (0.195 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.195;
+		g_globalvars.time + (0.221 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.234;
 }
 
 void player_chain_retract2(void)
@@ -218,7 +218,7 @@ void player_chain_retract2(void)
 
 	self->think = (func_t) player_run;
 	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ? 
-		g_globalvars.time + (0.13 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.13;
+		g_globalvars.time + (0.143 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.130;
 }
 
 void player_shot1(void)

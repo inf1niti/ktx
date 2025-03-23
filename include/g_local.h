@@ -621,6 +621,7 @@ void RegenerationSound(gedict_t *player);
 
 // ctf.c
 void PlayerDropFlag(gedict_t *player, qbool tossed);
+void PlayerSetFlagTransparency(gedict_t *player, qbool transparent);
 void RegenFlags(qbool yes);
 void AddHook(qbool yes);
 void CTF_Obituary(gedict_t *targ, gedict_t *attacker);

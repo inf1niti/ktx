@@ -1,20 +1,20 @@
 #include "g_local.h"
 
-#define HOOK_FIRE_RATE  0.325
-#define PULL_SPEED      666
-#define INIT_PULL_SPEED 360
-#define THROW_SPEED     880
-#define ACCEL_TIME      0.546
+#define HOOK_FIRE_RATE  0.364
+#define PULL_SPEED      684
+#define INIT_PULL_SPEED 284
+#define THROW_SPEED     884
+#define ACCEL_TIME      0.598
 #define EPSILON         1e-6F
 
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
-#define MIN_GRAVITY     0.25
-#define MAX_GRAVITY     0.75
+#define MIN_GRAVITY     0.36
+#define MAX_GRAVITY     0.78
 
-#define MIN_INERTIA     0.05
-#define MAX_INERTIA     0.5
+#define MIN_INERTIA     0.078
+#define MAX_INERTIA     0.478
 
 void SpawnBlood(vec3_t dest, float damage);
 
@@ -23,8 +23,8 @@ float OscilationFactor(float length, float threshold, float vRad) {
 	x = threshold - length;
 	x = x < 0 ? 0 : x;
 
-	k = 0.164;
-	b = 2 * sqrt(k);
+	k = 0.186;
+	b = 1.62 * sqrt(k);
 	return k * x - b * vRad;
 }
 
@@ -74,7 +74,7 @@ void GrappleReset(gedict_t *rhook)
 void GrappleRetract(void)
 {
 	float hookDistance, returnSpeed;
-	vec3_t hookVector, uv_hook;
+	vec3_t hookVector, uv_hook, hookOrigin;
 	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
 
 	if (!owner || owner == world)
@@ -88,16 +88,17 @@ void GrappleRetract(void)
 	VectorCopy(hookVector, uv_hook);
 	hookDistance = VectorNormalize(uv_hook);
 
-	if (g_globalvars.time >= owner->attack_finished || hookDistance <= 160)
+	if (g_globalvars.time >= owner->attack_finished || hookDistance <= 80)
 	{
 		self->think = (func_t)SUB_Remove;
 		self->s.v.nextthink = next_frame();
 		return;
 	}
 
-	returnSpeed = (hookDistance - 160) / g_globalvars.frametime;
+	returnSpeed = (hookDistance - 80) / g_globalvars.frametime * 0.234; // frametime * hook retract animation time
 	VectorScale(hookVector, returnSpeed, self->s.v.velocity);
 
+	self->touch = (func_t)SUB_Remove;
 	self->think = (func_t)GrappleRetract;
 	self->s.v.nextthink = next_frame();
 }
@@ -520,6 +521,9 @@ void GrappleService(void)
 			transVector, // oscilation magnitude vector
 			self->s.v.velocity
 		);
+
+		magnitude = 0.9; // oscilation decay
+		VectorScale(self->s.v.velocity, magnitude, self->s.v.velocity);
 	}
 
 	// // CLAMP BACKWARDS MOVEMENT (better air control physics with +moveback)
