@@ -32,7 +32,7 @@
 #define MIN_INERTIA     0.078
 #define MAX_INERTIA     0.478
 
-#define INPUT_TANGENTIAL_ACCEL 360
+#define INPUT_TANGENTIAL_ACCEL 320
 #define INPUT_BACK_PULL_SCALE  0.55
 
 #define TENSION_INPUT_GAIN     320
@@ -43,9 +43,10 @@
 
 #define RADIAL_SPEED_CAP       1.20
 #define RADIAL_AWAY_CAP        0.85
-#define TANGENTIAL_SPEED_CAP   1.15
+#define TANGENTIAL_SPEED_CAP   1.05
 #define TOTAL_SPEED_CAP        1.35
 #define OSCILLATION_DAMPING    0.92
+#define OSCILLATION_TANGENTIAL_DAMPING 0.99
 
 void SpawnBlood(vec3_t dest, float damage);
 void RCTF_GrappleRetract(void);
@@ -379,8 +380,10 @@ void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
 	if (radialSpeed > 0)
 	{
 		VectorScale(uv_hook, radialSpeed * OSCILLATION_DAMPING, radialVel);
-		VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
 	}
+
+	VectorScale(tangentialVel, OSCILLATION_TANGENTIAL_DAMPING, tangentialVel);
+	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
 }
 
 void RCTF_CapVelocity(vec3_t uv_hook, float maxPull)
