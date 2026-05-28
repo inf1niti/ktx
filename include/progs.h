@@ -1040,6 +1040,7 @@ typedef struct gedict_s
 	float hook_pullspeed;					// accelerate grapple velocity
 	float hook_time;					// how long to accelerate to max pullspeed
 	float hook_awaytime;					// how long player velocity has been moving in opposite direction from hook vector
+	float hook_tension;					// stored tension from pulling/moving away from the hook
 	float hook_pullspeed_accel;				// number by which to increment velocity
 	char *last_rune;					// name of last rune we send to client
 	float items2;						// using  ZQ_ITEMS2 extension in mvdsv we can use per client sigils for runes

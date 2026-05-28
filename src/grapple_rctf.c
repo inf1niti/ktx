@@ -2,7 +2,7 @@
 
 #define HOOK_FIRE_RATE  0.364
 #define PULL_SPEED      684
-#define INIT_PULL_SPEED 284
+#define INIT_PULL_SPEED 360
 #define THROW_SPEED     884
 #define ACCEL_TIME      0.598
 #define EPSILON         1e-6F
@@ -24,7 +24,13 @@
 #define INPUT_TANGENTIAL_ACCEL 360
 #define INPUT_BACK_PULL_SCALE  0.55
 
-#define RADIAL_SPEED_CAP       1.08
+#define TENSION_INPUT_GAIN     320
+#define TENSION_AWAY_GAIN      0.65
+#define TENSION_DECAY_RATE     180
+#define TENSION_RELEASE_RATE   720
+#define TENSION_MAX            0.55
+
+#define RADIAL_SPEED_CAP       1.20
 #define RADIAL_AWAY_CAP        0.85
 #define TANGENTIAL_SPEED_CAP   1.15
 #define TOTAL_SPEED_CAP        1.35
@@ -154,10 +160,44 @@ void RCTF_UpdateSlack(float wishAlign, float distanceToHook)
 	}
 }
 
+float RCTF_UpdateTension(float wishAlign, float radialSpeed, float maxPull)
+{
+	float tensionCap, inputTension, velocityTension, tensionBoost;
+
+	tensionCap = maxPull * TENSION_MAX;
+	inputTension = 0;
+	velocityTension = 0;
+	tensionBoost = 0;
+
+	if (wishAlign < -0.25)
+	{
+		inputTension = fabs(wishAlign) * TENSION_INPUT_GAIN * g_globalvars.frametime;
+	}
+
+	if (radialSpeed < 0)
+	{
+		velocityTension = min(-radialSpeed, maxPull) * TENSION_AWAY_GAIN * g_globalvars.frametime;
+	}
+
+	self->hook_tension = min(self->hook_tension + inputTension + velocityTension, tensionCap);
+
+	if ((wishAlign >= -0.1) && (radialSpeed >= -25) && (self->hook_tension > 0))
+	{
+		tensionBoost = self->hook_tension;
+		self->hook_tension = max(0, self->hook_tension - TENSION_RELEASE_RATE * g_globalvars.frametime);
+	}
+	else if (!inputTension && !velocityTension && (self->hook_tension > 0))
+	{
+		self->hook_tension = max(0, self->hook_tension - TENSION_DECAY_RATE * g_globalvars.frametime);
+	}
+
+	return tensionBoost;
+}
+
 void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign)
 {
 	vec3_t radialVel, tangentialVel;
-	float targetSpeed, radialSpeed, accel, slackFraction, slackScale;
+	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost;
 
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 
@@ -170,6 +210,7 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 	}
 
 	RCTF_UpdateSlack(wishAlign, distanceToHook);
+	tensionBoost = RCTF_UpdateTension(wishAlign, radialSpeed, maxPull);
 	if (self->hook_awaytime > SLACK_DELAY)
 	{
 		slackFraction = bound(0, (self->hook_awaytime - SLACK_DELAY) / SLACK_DURATION, 1);
@@ -177,7 +218,8 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 		targetSpeed *= 1.0 - (slackFraction * slackScale);
 	}
 
-	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull);
+	targetSpeed += tensionBoost;
+	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull * RADIAL_SPEED_CAP);
 	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
 	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
 			PULL_DECEL * g_globalvars.frametime);
@@ -290,6 +332,7 @@ void RCTF_GrappleReset(gedict_t *rhook)
 
 	owner->on_hook = false;
 	owner->hook_out = false;
+	owner->hook_tension = 0;
 	rhook->think = (func_t) RCTF_GrappleRetract;
 	rhook->s.v.nextthink = next_frame();
 
@@ -573,6 +616,7 @@ void RCTF_GrappleAnchor(void)
 	RCTF_ClearGrounded(owner);
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
+	owner->hook_tension = 0;
 	owner->on_hook = true;
 
 	self->s.v.enemy = EDICT_TO_PROG(other);
@@ -652,6 +696,7 @@ void RCTF_GrappleThrow(void)
 	self->hook = newmis;
 	self->hook_cancel_time = 0;
 	self->hook_awaytime = 0;
+	self->hook_tension = 0;
 
 	trap_makevectors(self->s.v.v_angle);
 	normalize(g_globalvars.v_forward, uv_throw);
