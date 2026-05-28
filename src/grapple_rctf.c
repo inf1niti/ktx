@@ -11,6 +11,9 @@
 #define HOOK_RETRACT_SPEED         1400
 #define HOOK_RETRACT_END_DISTANCE  80
 
+#define GROUND_DETACH_SPEED        360
+#define GROUND_DETACH_MIN_UP       0.20
+
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
@@ -74,6 +77,7 @@ float RCTF_VectorAlignment(vec3_t vector1, vec3_t vector2)
 void RCTF_ClearGrounded(gedict_t *player)
 {
 	player->s.v.flags -= ((int)player->s.v.flags) & FL_ONGROUND;
+	player->s.v.groundentity = EDICT_TO_PROG(world);
 }
 
 float RCTF_Approach(float current, float target, float accel, float decel)
@@ -97,6 +101,32 @@ void RCTF_DecomposeVelocity(vec3_t velocity, vec3_t uv_hook, vec3_t radialVel, v
 	*radialSpeed = DotProduct(velocity, uv_hook);
 	VectorScale(uv_hook, *radialSpeed, radialVel);
 	VectorSubtract(velocity, radialVel, tangentialVel);
+}
+
+void RCTF_SetMinimumRadialSpeed(gedict_t *player, vec3_t uv_hook, float minSpeed)
+{
+	vec3_t radialVel, tangentialVel;
+	float radialSpeed;
+
+	RCTF_DecomposeVelocity(player->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	if (radialSpeed >= minSpeed)
+	{
+		return;
+	}
+
+	VectorScale(uv_hook, minSpeed, radialVel);
+	VectorAdd(radialVel, tangentialVel, player->s.v.velocity);
+}
+
+void RCTF_DetachFromGround(gedict_t *player, vec3_t uv_hook)
+{
+	qbool wasGrounded = (int)player->s.v.flags & FL_ONGROUND;
+
+	RCTF_ClearGrounded(player);
+	if (wasGrounded && uv_hook[2] > GROUND_DETACH_MIN_UP)
+	{
+		RCTF_SetMinimumRadialSpeed(player, uv_hook, GROUND_DETACH_SPEED);
+	}
 }
 
 void RCTF_GetHookVector(gedict_t *hook, gedict_t *target, vec3_t hookVector)
@@ -634,7 +664,7 @@ void RCTF_GrappleAnchor(void)
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 
-	RCTF_ClearGrounded(owner);
+	RCTF_DetachFromGround(owner, uv_hook);
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
 	owner->hook_tension = 0;
