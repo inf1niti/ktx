@@ -1,11 +1,15 @@
 #include "g_local.h"
 
-#define HOOK_FIRE_RATE  0.364
 #define PULL_SPEED      684
 #define INIT_PULL_SPEED 360
 #define THROW_SPEED     884
 #define ACCEL_TIME      0.598
 #define EPSILON         1e-6F
+
+#define HOOK_MIN_REFIRE_TIME       0.28
+#define HOOK_MAX_REFIRE_TIME       0.96
+#define HOOK_RETRACT_SPEED         1400
+#define HOOK_RETRACT_END_DISTANCE  80
 
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
@@ -110,6 +114,25 @@ void RCTF_GetHookVector(gedict_t *hook, gedict_t *target, vec3_t hookVector)
 float RCTF_HasteMultiplier(void)
 {
 	return (cvar("k_ctf_rune_power_hst") / 16) + 1;
+}
+
+float RCTF_GrappleRefireDelay(gedict_t *owner, gedict_t *rhook)
+{
+	vec3_t hookVector, uv_hook;
+	float hookDistance, delay;
+
+	VectorSubtract(owner->s.v.origin, rhook->s.v.origin, hookVector);
+	VectorCopy(hookVector, uv_hook);
+	hookDistance = VectorNormalize(uv_hook);
+
+	delay = (hookDistance - HOOK_RETRACT_END_DISTANCE) / HOOK_RETRACT_SPEED;
+	if (owner->ctf_flag & CTF_RUNE_HST)
+	{
+		delay /= cvar("k_ctf_rune_power_hst");
+	}
+	delay = bound(HOOK_MIN_REFIRE_TIME, delay, HOOK_MAX_REFIRE_TIME);
+
+	return delay;
 }
 
 float RCTF_TargetPullSpeed(float minPull, float maxPull)
@@ -345,15 +368,13 @@ void RCTF_GrappleReset(gedict_t *rhook)
 		sound(rhook, CHAN_WEAPON, "weapons/ax1.wav", 1, ATTN_NORM);
 	}
 
-	owner->attack_finished = (owner->ctf_flag & CTF_RUNE_HST) ?
-			g_globalvars.time + (HOOK_FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + HOOK_FIRE_RATE;
-	owner->hook_reset_time = (owner->ctf_flag & CTF_RUNE_HST) ?
-			g_globalvars.time + (HOOK_FIRE_RATE / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + HOOK_FIRE_RATE;
+	owner->hook_reset_time = g_globalvars.time + RCTF_GrappleRefireDelay(owner, rhook);
+	owner->attack_finished = owner->hook_reset_time;
 }
 
 void RCTF_GrappleRetract(void)
 {
-	float hookDistance, returnSpeed;
+	float hookDistance, returnSpeed, timeLeft;
 	vec3_t hookVector, uv_hook;
 	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
 
@@ -367,15 +388,16 @@ void RCTF_GrappleRetract(void)
 	VectorSubtract(owner->s.v.origin, self->s.v.origin, hookVector);
 	VectorCopy(hookVector, uv_hook);
 	hookDistance = VectorNormalize(uv_hook);
+	timeLeft = owner->hook_reset_time - g_globalvars.time;
 
-	if (g_globalvars.time >= owner->attack_finished || hookDistance <= 80)
+	if (timeLeft <= g_globalvars.frametime || hookDistance <= HOOK_RETRACT_END_DISTANCE)
 	{
 		self->think = (func_t) SUB_Remove;
 		self->s.v.nextthink = next_frame();
 		return;
 	}
 
-	returnSpeed = (hookDistance - 80) / g_globalvars.frametime * 0.234;
+	returnSpeed = (hookDistance - HOOK_RETRACT_END_DISTANCE) / timeLeft;
 	VectorScale(uv_hook, returnSpeed, self->s.v.velocity);
 
 	self->touch = (func_t) SUB_Remove;
