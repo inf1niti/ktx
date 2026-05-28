@@ -22,7 +22,7 @@
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
-#define PULL_ACCEL      5200
+#define PULL_ACCEL      4600
 #define PULL_DECEL      2400
 #define PULL_RECOVER    7200
 #define VERTICAL_PULL_BOOST 0.35
@@ -42,7 +42,7 @@
 #define TENSION_RELEASE_RATE   720
 #define TENSION_MAX            0.55
 
-#define RADIAL_SPEED_CAP       1.20
+#define RADIAL_SPEED_CAP       1.12
 #define RADIAL_AWAY_CAP        0.85
 #define TANGENTIAL_SPEED_CAP   1.05
 #define TOTAL_SPEED_CAP        1.35
@@ -195,6 +195,20 @@ void RCTF_GetHookVector(gedict_t *hook, gedict_t *target, vec3_t hookVector)
 	else
 	{
 		VectorSubtract(hook->s.v.origin, self->s.v.origin, hookVector);
+	}
+}
+
+void RCTF_GetPullVector(vec3_t uv_hook, qbool wasOnGround, vec3_t uv_pull)
+{
+	VectorCopy(uv_hook, uv_pull);
+
+	if (wasOnGround && (uv_pull[2] <= GROUND_DETACH_MIN_UP))
+	{
+		uv_pull[2] = 0;
+		if (VectorNormalize(uv_pull) < EPSILON)
+		{
+			VectorCopy(uv_hook, uv_pull);
+		}
 	}
 }
 
@@ -692,8 +706,9 @@ void RCTF_BuildChain(void)
 void RCTF_GrappleAnchor(void)
 {
 	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
-	vec3_t hookVector, uv_hook, radialVel, tangentialVel;
+	vec3_t hookVector, uv_hook, uv_pull, radialVel, tangentialVel;
 	float radialSpeed;
+	qbool wasOnGround;
 
 	if (other == owner)
 	{
@@ -751,7 +766,9 @@ void RCTF_GrappleAnchor(void)
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 
-	RCTF_DecomposeVelocity(owner->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	wasOnGround = (int)owner->s.v.flags & FL_ONGROUND;
+	RCTF_GetPullVector(uv_hook, wasOnGround, uv_pull);
+	RCTF_DecomposeVelocity(owner->s.v.velocity, uv_pull, radialVel, tangentialVel, &radialSpeed);
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
 	owner->hook_tension = 0;
@@ -771,9 +788,9 @@ void RCTF_GrappleAnchor(void)
 void RCTF_GrappleService(void)
 {
 	gedict_t *target;
-	vec3_t hookVector, uv_hook, wishDir, tangentDir;
+	vec3_t hookVector, uv_hook, uv_pull, wishDir, tangentDir;
 	float distanceToHook, hasteMultiplier, minPull, maxPull, wishAlign;
-	qbool wasGrounded;
+	qbool useGroundBias, wasOnGround;
 
 	if (!self->s.v.button0)
 	{
@@ -792,26 +809,28 @@ void RCTF_GrappleService(void)
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 	distanceToHook = VectorLength(hookVector);
-	wasGrounded = ((int)self->s.v.flags & FL_ONGROUND) && (uv_hook[2] > GROUND_DETACH_MIN_UP);
+	wasOnGround = (int)self->s.v.flags & FL_ONGROUND;
+	useGroundBias = wasOnGround && (uv_hook[2] > GROUND_DETACH_MIN_UP);
+	RCTF_GetPullVector(uv_hook, wasOnGround, uv_pull);
 	RCTF_ClearGrounded(self);
 	hasteMultiplier = RCTF_HasteMultiplier();
 
 	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
 	maxPull = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
-	wishAlign = RCTF_MovementInfluence(uv_hook, wishDir, tangentDir);
+	wishAlign = RCTF_MovementInfluence(uv_pull, wishDir, tangentDir);
 
-	RCTF_ApplyRadialPull(uv_hook, distanceToHook, minPull, maxPull, wishAlign);
+	RCTF_ApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign);
 	RCTF_ApplyInputControl(tangentDir, wishAlign);
-	if (wasGrounded)
+	if (useGroundBias)
 	{
-		RCTF_ApplyGroundBias(uv_hook, maxPull);
+		RCTF_ApplyGroundBias(uv_pull, maxPull);
 	}
-	else
+	else if (!wasOnGround)
 	{
-		RCTF_ApplyGravityInfluence(uv_hook, maxPull);
+		RCTF_ApplyGravityInfluence(uv_pull, maxPull);
 	}
-	RCTF_ApplyOscillation(uv_hook, distanceToHook);
-	RCTF_CapVelocity(uv_hook, maxPull);
+	RCTF_ApplyOscillation(uv_pull, distanceToHook);
+	RCTF_CapVelocity(uv_pull, maxPull);
 }
 
 void RCTF_GrappleThrow(void)
