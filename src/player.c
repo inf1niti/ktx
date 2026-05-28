@@ -225,12 +225,14 @@ void player_chain5(void)
 
 void player_chain_retract1(void)
 {
+	float retract_time;
+
 	self->s.v.frame = 140;
 	self->s.v.weaponframe = 3;
 	self->think = (func_t) player_chain_retract2;
 
-	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ?
-			g_globalvars.time + (0.221 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.234;
+	retract_time = max(self->hook_reset_time, next_frame());
+	self->s.v.nextthink = retract_time;
 }
 
 void player_chain_retract2(void)

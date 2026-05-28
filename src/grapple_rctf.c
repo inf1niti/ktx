@@ -392,8 +392,7 @@ void RCTF_GrappleRetract(void)
 
 	if (timeLeft <= g_globalvars.frametime || hookDistance <= HOOK_RETRACT_END_DISTANCE)
 	{
-		self->think = (func_t) SUB_Remove;
-		self->s.v.nextthink = next_frame();
+		SUB_Remove();
 		return;
 	}
 
