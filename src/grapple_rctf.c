@@ -12,7 +12,8 @@
 #define HOOK_RETRACT_END_DISTANCE  80
 
 #define GROUND_DETACH_SPEED        360
-#define GROUND_DETACH_MIN_UP       0.20
+#define GROUND_DETACH_MIN_UP       0.08
+#define GROUND_TANGENTIAL_SCALE    0.35
 
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
@@ -115,6 +116,16 @@ void RCTF_SetMinimumRadialSpeed(gedict_t *player, vec3_t uv_hook, float minSpeed
 	}
 
 	VectorScale(uv_hook, minSpeed, radialVel);
+	VectorAdd(radialVel, tangentialVel, player->s.v.velocity);
+}
+
+void RCTF_DampenTangentialVelocity(gedict_t *player, vec3_t uv_hook, float scale)
+{
+	vec3_t radialVel, tangentialVel;
+	float radialSpeed;
+
+	RCTF_DecomposeVelocity(player->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	VectorScale(tangentialVel, scale, tangentialVel);
 	VectorAdd(radialVel, tangentialVel, player->s.v.velocity);
 }
 
@@ -318,6 +329,12 @@ void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
 		VectorMA(self->s.v.velocity, gravityScale * gravityTangent * cvar("sv_gravity") * g_globalvars.frametime,
 				transVector, self->s.v.velocity);
 	}
+}
+
+void RCTF_ApplyGroundBias(vec3_t uv_hook)
+{
+	RCTF_SetMinimumRadialSpeed(self, uv_hook, GROUND_DETACH_SPEED);
+	RCTF_DampenTangentialVelocity(self, uv_hook, GROUND_TANGENTIAL_SCALE);
 }
 
 void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
@@ -682,6 +699,7 @@ void RCTF_GrappleService(void)
 	gedict_t *target;
 	vec3_t hookVector, uv_hook, wishDir, tangentDir;
 	float distanceToHook, hasteMultiplier, minPull, maxPull, wishAlign;
+	qbool wasGrounded;
 
 	if (!self->s.v.button0)
 	{
@@ -696,11 +714,12 @@ void RCTF_GrappleService(void)
 	RCTF_GetHookVector(self->hook, target, hookVector);
 
 	ExtFieldSetAlpha(self->hook, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
-	RCTF_ClearGrounded(self);
 
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 	distanceToHook = VectorLength(hookVector);
+	wasGrounded = ((int)self->s.v.flags & FL_ONGROUND) && (uv_hook[2] > GROUND_DETACH_MIN_UP);
+	RCTF_ClearGrounded(self);
 	hasteMultiplier = RCTF_HasteMultiplier();
 
 	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
@@ -709,7 +728,14 @@ void RCTF_GrappleService(void)
 
 	RCTF_ApplyRadialPull(uv_hook, distanceToHook, minPull, maxPull, wishAlign);
 	RCTF_ApplyInputControl(tangentDir, wishAlign);
-	RCTF_ApplyGravityInfluence(uv_hook, maxPull);
+	if (wasGrounded)
+	{
+		RCTF_ApplyGroundBias(uv_hook);
+	}
+	else
+	{
+		RCTF_ApplyGravityInfluence(uv_hook, maxPull);
+	}
 	RCTF_ApplyOscillation(uv_hook, distanceToHook);
 	RCTF_CapVelocity(uv_hook, maxPull);
 }
