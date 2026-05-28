@@ -46,7 +46,8 @@
 #define TANGENTIAL_SPEED_CAP   1.05
 #define TOTAL_SPEED_CAP        1.35
 #define OSCILLATION_DAMPING    0.92
-#define OSCILLATION_TANGENTIAL_DAMPING 0.99
+#define OSCILLATION_TANGENTIAL_DAMPING 0.985
+#define OSCILLATION_THRESHOLD_SCALE     0.33
 
 void SpawnBlood(vec3_t dest, float damage);
 void RCTF_GrappleRetract(void);
@@ -366,7 +367,7 @@ void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
 	vec3_t radialVel, tangentialVel, transVector;
 	float radialSpeed, threshold, magnitude;
 
-	threshold = 0.25 * self->hook_initial_length;
+	threshold = OSCILLATION_THRESHOLD_SCALE * self->hook_initial_length;
 	if (distanceToHook >= threshold)
 	{
 		return;
@@ -389,11 +390,12 @@ void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
 void RCTF_CapVelocity(vec3_t uv_hook, float maxPull)
 {
 	vec3_t radialVel, tangentialVel;
-	float radialSpeed, tangentialSpeed, totalSpeed, cap;
+	float radialSpeed, tangentialSpeed, totalSpeed, cap, radialCap;
 
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 
-	radialSpeed = bound(-(maxPull * RADIAL_AWAY_CAP), radialSpeed, maxPull * RADIAL_SPEED_CAP);
+	radialCap = max(maxPull * RADIAL_SPEED_CAP, self->hook_initial_radial_speed);
+	radialSpeed = bound(-(maxPull * RADIAL_AWAY_CAP), radialSpeed, radialCap);
 	VectorScale(uv_hook, radialSpeed, radialVel);
 
 	tangentialSpeed = VectorNormalize(tangentialVel);
@@ -429,6 +431,7 @@ void RCTF_GrappleReset(gedict_t *rhook)
 	owner->on_hook = false;
 	owner->hook_out = false;
 	owner->hook_tension = 0;
+	owner->hook_initial_radial_speed = 0;
 	rhook->think = (func_t) RCTF_GrappleRetract;
 	rhook->s.v.nextthink = next_frame();
 
@@ -711,6 +714,7 @@ void RCTF_GrappleAnchor(void)
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
 	owner->hook_tension = 0;
+	owner->hook_initial_radial_speed = max(0, DotProduct(owner->s.v.velocity, uv_hook));
 	owner->on_hook = true;
 
 	self->s.v.enemy = EDICT_TO_PROG(other);
@@ -800,6 +804,7 @@ void RCTF_GrappleThrow(void)
 	self->hook_cancel_time = 0;
 	self->hook_awaytime = 0;
 	self->hook_tension = 0;
+	self->hook_initial_radial_speed = 0;
 
 	trap_makevectors(self->s.v.v_angle);
 	normalize(g_globalvars.v_forward, uv_throw);
