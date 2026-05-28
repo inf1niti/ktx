@@ -13,6 +13,9 @@
 
 #define GROUND_DETACH_SPEED        360
 #define GROUND_DETACH_MIN_UP       0.02
+#define GROUND_MIN_LIFT_SPEED      120
+#define GROUND_MAX_LIFT_SPEED      260
+#define GROUND_FULL_LIFT_UP        0.25
 #define GROUND_TANGENTIAL_SCALE    0.35
 
 #define SLACK_DELAY     0.325
@@ -129,6 +132,24 @@ void RCTF_DampenTangentialVelocity(gedict_t *player, vec3_t uv_hook, float scale
 	VectorAdd(radialVel, tangentialVel, player->s.v.velocity);
 }
 
+void RCTF_SetMinimumGroundLift(gedict_t *player, vec3_t uv_hook)
+{
+	float liftSpeed;
+
+	if (uv_hook[2] <= GROUND_DETACH_MIN_UP)
+	{
+		return;
+	}
+
+	liftSpeed = GROUND_MAX_LIFT_SPEED * bound(0, uv_hook[2] / GROUND_FULL_LIFT_UP, 1);
+	liftSpeed = max(GROUND_MIN_LIFT_SPEED, liftSpeed);
+
+	if (player->s.v.velocity[2] < liftSpeed)
+	{
+		player->s.v.velocity[2] = liftSpeed;
+	}
+}
+
 void RCTF_DetachFromGround(gedict_t *player, vec3_t uv_hook)
 {
 	qbool wasGrounded = (int)player->s.v.flags & FL_ONGROUND;
@@ -137,6 +158,7 @@ void RCTF_DetachFromGround(gedict_t *player, vec3_t uv_hook)
 	if (wasGrounded && uv_hook[2] > GROUND_DETACH_MIN_UP)
 	{
 		RCTF_SetMinimumRadialSpeed(player, uv_hook, GROUND_DETACH_SPEED);
+		RCTF_SetMinimumGroundLift(player, uv_hook);
 	}
 }
 
@@ -334,6 +356,7 @@ void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
 void RCTF_ApplyGroundBias(vec3_t uv_hook)
 {
 	RCTF_SetMinimumRadialSpeed(self, uv_hook, GROUND_DETACH_SPEED);
+	RCTF_SetMinimumGroundLift(self, uv_hook);
 	RCTF_DampenTangentialVelocity(self, uv_hook, GROUND_TANGENTIAL_SCALE);
 }
 
