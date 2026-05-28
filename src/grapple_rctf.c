@@ -10,11 +10,24 @@
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
+#define PULL_ACCEL      5200
+#define PULL_DECEL      2400
+#define PULL_RECOVER    7200
+
 #define MIN_GRAVITY     0.36
 #define MAX_GRAVITY     0.78
 
 #define MIN_INERTIA     0.078
 #define MAX_INERTIA     0.478
+
+#define INPUT_TANGENTIAL_ACCEL 360
+#define INPUT_BACK_PULL_SCALE  0.55
+
+#define RADIAL_SPEED_CAP       1.08
+#define RADIAL_AWAY_CAP        0.85
+#define TANGENTIAL_SPEED_CAP   1.15
+#define TOTAL_SPEED_CAP        1.35
+#define OSCILLATION_DAMPING    0.92
 
 void SpawnBlood(vec3_t dest, float damage);
 void RCTF_GrappleRetract(void);
@@ -45,6 +58,221 @@ float RCTF_VectorAlignment(vec3_t vector1, vec3_t vector2)
 	ln2 = VectorNormalize(uv_2);
 
 	return (ln1 < EPSILON || ln2 < EPSILON) ? 0 : bound(-1.0, DotProduct(uv_1, uv_2), 1.0);
+}
+
+void RCTF_ClearGrounded(gedict_t *player)
+{
+	player->s.v.flags -= ((int)player->s.v.flags) & FL_ONGROUND;
+}
+
+float RCTF_Approach(float current, float target, float accel, float decel)
+{
+	float step, delta;
+
+	delta = target - current;
+	step = (delta > 0) ? accel : decel;
+
+	if (fabs(delta) <= step)
+	{
+		return target;
+	}
+
+	return current + ((delta > 0) ? step : -step);
+}
+
+void RCTF_DecomposeVelocity(vec3_t velocity, vec3_t uv_hook, vec3_t radialVel, vec3_t tangentialVel,
+		float *radialSpeed)
+{
+	*radialSpeed = DotProduct(velocity, uv_hook);
+	VectorScale(uv_hook, *radialSpeed, radialVel);
+	VectorSubtract(velocity, radialVel, tangentialVel);
+}
+
+void RCTF_GetHookVector(gedict_t *hook, gedict_t *target, vec3_t hookVector)
+{
+	if (target->ct == ctPlayer)
+	{
+		VectorSubtract(target->s.v.origin, self->s.v.origin, hookVector);
+	}
+	else
+	{
+		VectorSubtract(hook->s.v.origin, self->s.v.origin, hookVector);
+	}
+}
+
+float RCTF_HasteMultiplier(void)
+{
+	return (cvar("k_ctf_rune_power_hst") / 16) + 1;
+}
+
+float RCTF_TargetPullSpeed(float minPull, float maxPull)
+{
+	float lerpFactor;
+
+	lerpFactor = bound(0, self->hook_time / ACCEL_TIME, 1);
+	return minPull + lerpFactor * (maxPull - minPull);
+}
+
+float RCTF_MovementInfluence(vec3_t uv_hook, vec3_t wishDir, vec3_t tangentDir)
+{
+	float wishAlign, tangentLen;
+
+	VectorClear(wishDir);
+	VectorClear(tangentDir);
+	trap_makevectors(self->s.v.v_angle);
+
+	VectorMA(wishDir, self->movement[0], g_globalvars.v_forward, wishDir);
+	VectorMA(wishDir, self->movement[1], g_globalvars.v_right, wishDir);
+
+	if (VectorNormalize(wishDir) < EPSILON)
+	{
+		return 0;
+	}
+
+	wishAlign = bound(-1.0, DotProduct(wishDir, uv_hook), 1.0);
+	VectorMA(wishDir, -wishAlign, uv_hook, tangentDir);
+	tangentLen = VectorNormalize(tangentDir);
+
+	if (tangentLen < EPSILON)
+	{
+		VectorClear(tangentDir);
+	}
+
+	return wishAlign;
+}
+
+void RCTF_UpdateSlack(float wishAlign, float distanceToHook)
+{
+	if ((wishAlign < -0.25) && (distanceToHook > (self->hook_initial_length * 0.5)))
+	{
+		self->hook_awaytime += g_globalvars.frametime;
+	}
+	else
+	{
+		self->hook_awaytime = 0;
+	}
+}
+
+void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign)
+{
+	vec3_t radialVel, tangentialVel;
+	float targetSpeed, radialSpeed, accel, slackFraction, slackScale;
+
+	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+
+	targetSpeed = RCTF_TargetPullSpeed(minPull, maxPull);
+	if (wishAlign < -0.15)
+	{
+		targetSpeed *= 1.0 + (wishAlign * INPUT_BACK_PULL_SCALE);
+	}
+
+	RCTF_UpdateSlack(wishAlign, distanceToHook);
+	if (self->hook_awaytime > SLACK_DELAY)
+	{
+		slackFraction = bound(0, (self->hook_awaytime - SLACK_DELAY) / SLACK_DURATION, 1);
+		slackScale = MIN_INERTIA + fabs(wishAlign) * (MAX_INERTIA - MIN_INERTIA);
+		targetSpeed *= 1.0 - (slackFraction * slackScale);
+	}
+
+	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull);
+	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
+	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
+			PULL_DECEL * g_globalvars.frametime);
+
+	VectorScale(uv_hook, radialSpeed, radialVel);
+	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
+	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
+}
+
+void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
+{
+	float accel;
+
+	if (VectorLength(tangentDir) < EPSILON)
+	{
+		return;
+	}
+
+	accel = INPUT_TANGENTIAL_ACCEL;
+	if (wishAlign < 0)
+	{
+		accel *= 1.0 + fabs(wishAlign) * 0.5;
+	}
+
+	VectorMA(self->s.v.velocity, accel * g_globalvars.frametime, tangentDir, self->s.v.velocity);
+}
+
+void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
+{
+	vec3_t transVector, uv_gravity;
+	float radialSpeed, radialFactor, gravityInfluence, gravityScale;
+
+	radialSpeed = DotProduct(self->s.v.velocity, uv_hook);
+	radialFactor = bound(0, radialSpeed / maxPull, 1);
+	VectorSet(uv_gravity, 0, 0, -1);
+	gravityInfluence = RCTF_VectorAlignment(uv_gravity, uv_hook);
+	gravityScale = MIN_GRAVITY + radialFactor * (MAX_GRAVITY - MIN_GRAVITY);
+
+	if (gravityInfluence < 0 && radialFactor > 0.02)
+	{
+		VectorScale(uv_hook, gravityInfluence, transVector);
+		VectorMA(self->s.v.velocity, gravityScale * cvar("sv_gravity") * g_globalvars.frametime,
+				transVector, self->s.v.velocity);
+	}
+}
+
+void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
+{
+	vec3_t radialVel, tangentialVel, transVector;
+	float radialSpeed, threshold, magnitude;
+
+	threshold = 0.25 * self->hook_initial_length;
+	if (distanceToHook >= threshold)
+	{
+		return;
+	}
+
+	magnitude = RCTF_OscillationFactor(distanceToHook, threshold, DotProduct(self->s.v.velocity, uv_hook));
+	VectorScale(uv_hook, magnitude, transVector);
+	VectorMA(self->s.v.velocity, g_globalvars.frametime, transVector, self->s.v.velocity);
+
+	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	if (radialSpeed > 0)
+	{
+		VectorScale(uv_hook, radialSpeed * OSCILLATION_DAMPING, radialVel);
+		VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
+	}
+}
+
+void RCTF_CapVelocity(vec3_t uv_hook, float maxPull)
+{
+	vec3_t radialVel, tangentialVel;
+	float radialSpeed, tangentialSpeed, totalSpeed, cap;
+
+	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+
+	radialSpeed = bound(-(maxPull * RADIAL_AWAY_CAP), radialSpeed, maxPull * RADIAL_SPEED_CAP);
+	VectorScale(uv_hook, radialSpeed, radialVel);
+
+	tangentialSpeed = VectorNormalize(tangentialVel);
+	cap = maxPull * TANGENTIAL_SPEED_CAP;
+	if (tangentialSpeed > cap)
+	{
+		VectorScale(tangentialVel, cap, tangentialVel);
+	}
+	else
+	{
+		VectorScale(tangentialVel, tangentialSpeed, tangentialVel);
+	}
+
+	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
+
+	totalSpeed = VectorLength(self->s.v.velocity);
+	cap = maxPull * TOTAL_SPEED_CAP;
+	if (totalSpeed > cap)
+	{
+		VectorScale(self->s.v.velocity, cap / totalSpeed, self->s.v.velocity);
+	}
 }
 
 void RCTF_GrappleReset(gedict_t *rhook)
@@ -338,6 +566,7 @@ void RCTF_GrappleAnchor(void)
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 
+	RCTF_ClearGrounded(owner);
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
 	owner->on_hook = true;
@@ -352,10 +581,8 @@ void RCTF_GrappleAnchor(void)
 void RCTF_GrappleService(void)
 {
 	gedict_t *target;
-	vec3_t hookVector, transVector, radialVel, tangentialVel, uv_self, uv_hook, uv_gravity;
-	float distanceToHook, hasteMultiplier, playerSpeed, playerInfluence, minPull, maxPull, targetSpeed;
-	float speedDiff, radialSpeed, radialFactor, gravityInfluence, timeElapsed, timeFraction, magnitude;
-	float lerpFactor, overshootThreshold, finalSpeed, finalSpeedCap;
+	vec3_t hookVector, uv_hook, wishDir, tangentDir;
+	float distanceToHook, hasteMultiplier, minPull, maxPull, wishAlign;
 
 	if (!self->s.v.button0)
 	{
@@ -367,102 +594,25 @@ void RCTF_GrappleService(void)
 	}
 
 	target = PROG_TO_EDICT(self->hook->s.v.enemy);
-	if (target->ct == ctPlayer)
-	{
-		VectorSubtract(target->s.v.origin, self->s.v.origin, hookVector);
-	}
-	else
-	{
-		VectorSubtract(self->hook->s.v.origin, self->s.v.origin, hookVector);
-	}
+	RCTF_GetHookVector(self->hook, target, hookVector);
 
 	ExtFieldSetAlpha(self->hook, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
+	RCTF_ClearGrounded(self);
 
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 	distanceToHook = VectorLength(hookVector);
-	hasteMultiplier = (cvar("k_ctf_rune_power_hst") / 16) + 1;
+	hasteMultiplier = RCTF_HasteMultiplier();
 
 	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
 	maxPull = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
-	radialSpeed = DotProduct(self->s.v.velocity, uv_hook);
-	lerpFactor = bound(0, self->hook_time / ACCEL_TIME, 1);
-	targetSpeed = minPull + lerpFactor * (maxPull - minPull);
+	wishAlign = RCTF_MovementInfluence(uv_hook, wishDir, tangentDir);
 
-	speedDiff = targetSpeed - radialSpeed;
-	if (speedDiff > 0)
-	{
-		magnitude = speedDiff / g_globalvars.frametime;
-		VectorScale(uv_hook, magnitude, transVector);
-		VectorMA(self->s.v.velocity, g_globalvars.frametime, transVector, self->s.v.velocity);
-	}
-	else if (speedDiff < 0)
-	{
-		magnitude = radialSpeed - (fabs(speedDiff) * 0.025);
-		magnitude = magnitude < maxPull ? maxPull : magnitude;
-
-		VectorScale(uv_hook, radialSpeed, radialVel);
-		VectorSubtract(self->s.v.velocity, radialVel, tangentialVel);
-
-		VectorScale(uv_hook, magnitude, radialVel);
-		VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
-	}
-	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
-
-	VectorSet(uv_gravity, 0, 0, -1);
-	gravityInfluence = RCTF_VectorAlignment(uv_gravity, uv_hook);
-	radialFactor = bound(0, radialSpeed / maxPull, 1);
-	lerpFactor = MIN_GRAVITY + radialFactor * (MAX_GRAVITY - MIN_GRAVITY);
-
-	if (gravityInfluence < 0 && radialFactor > 0.02)
-	{
-		VectorScale(uv_hook, gravityInfluence, transVector);
-		VectorMA(self->s.v.velocity, lerpFactor * cvar("sv_gravity") * g_globalvars.frametime,
-				transVector, self->s.v.velocity);
-	}
-
-	VectorCopy(self->s.v.velocity, uv_self);
-	playerSpeed = VectorNormalize(uv_self);
-	playerInfluence = RCTF_VectorAlignment(uv_self, uv_hook);
-
-	if (playerInfluence < 0 && distanceToHook > (self->hook_initial_length / 2))
-	{
-		self->hook_awaytime += g_globalvars.frametime;
-		timeElapsed = self->hook_awaytime - SLACK_DELAY;
-
-		if (self->hook_awaytime > SLACK_DELAY)
-		{
-			timeFraction = bound(0, timeElapsed / SLACK_DURATION, 1);
-			lerpFactor = MIN_INERTIA + (fabs(playerInfluence) * timeFraction) * (MAX_INERTIA - MIN_INERTIA);
-
-			VectorScale(uv_hook, playerSpeed * (1.0 - lerpFactor), transVector);
-			VectorMA(self->s.v.velocity, lerpFactor, transVector, self->s.v.velocity);
-		}
-	}
-	else if (self->hook_awaytime > 0)
-	{
-		self->hook_awaytime = 0;
-	}
-
-	overshootThreshold = 0.25 * self->hook_initial_length;
-	if (distanceToHook < overshootThreshold)
-	{
-		magnitude = RCTF_OscillationFactor(distanceToHook, overshootThreshold,
-				DotProduct(self->s.v.velocity, uv_hook));
-
-		VectorScale(uv_hook, magnitude, transVector);
-		VectorMA(self->s.v.velocity, g_globalvars.frametime, transVector, self->s.v.velocity);
-
-		VectorScale(self->s.v.velocity, 0.9, self->s.v.velocity);
-	}
-
-	finalSpeedCap = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * 1.125 * hasteMultiplier : PULL_SPEED * 1.125;
-	finalSpeed = VectorLength(self->s.v.velocity);
-	if (finalSpeed > finalSpeedCap)
-	{
-		magnitude = finalSpeedCap / finalSpeed;
-		VectorScale(self->s.v.velocity, magnitude, self->s.v.velocity);
-	}
+	RCTF_ApplyRadialPull(uv_hook, distanceToHook, minPull, maxPull, wishAlign);
+	RCTF_ApplyInputControl(tangentDir, wishAlign);
+	RCTF_ApplyGravityInfluence(uv_hook, maxPull);
+	RCTF_ApplyOscillation(uv_hook, distanceToHook);
+	RCTF_CapVelocity(uv_hook, maxPull);
 }
 
 void RCTF_GrappleThrow(void)
