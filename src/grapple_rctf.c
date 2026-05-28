@@ -13,6 +13,7 @@
 #define PULL_ACCEL      5200
 #define PULL_DECEL      2400
 #define PULL_RECOVER    7200
+#define VERTICAL_PULL_BOOST 0.35
 
 #define MIN_GRAVITY     0.36
 #define MAX_GRAVITY     0.78
@@ -161,6 +162,8 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 
 	targetSpeed = RCTF_TargetPullSpeed(minPull, maxPull);
+	targetSpeed += bound(0, uv_hook[2], 1) * VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
+
 	if (wishAlign < -0.15)
 	{
 		targetSpeed *= 1.0 + (wishAlign * INPUT_BACK_PULL_SCALE);
@@ -205,18 +208,19 @@ void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
 void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
 {
 	vec3_t transVector, uv_gravity;
-	float radialSpeed, radialFactor, gravityInfluence, gravityScale;
+	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent;
 
 	radialSpeed = DotProduct(self->s.v.velocity, uv_hook);
 	radialFactor = bound(0, radialSpeed / maxPull, 1);
 	VectorSet(uv_gravity, 0, 0, -1);
 	gravityInfluence = RCTF_VectorAlignment(uv_gravity, uv_hook);
+	VectorMA(uv_gravity, -gravityInfluence, uv_hook, transVector);
+	gravityTangent = VectorNormalize(transVector);
 	gravityScale = MIN_GRAVITY + radialFactor * (MAX_GRAVITY - MIN_GRAVITY);
 
-	if (gravityInfluence < 0 && radialFactor > 0.02)
+	if (gravityTangent > EPSILON && radialFactor > 0.02)
 	{
-		VectorScale(uv_hook, gravityInfluence, transVector);
-		VectorMA(self->s.v.velocity, gravityScale * cvar("sv_gravity") * g_globalvars.frametime,
+		VectorMA(self->s.v.velocity, gravityScale * gravityTangent * cvar("sv_gravity") * g_globalvars.frametime,
 				transVector, self->s.v.velocity);
 	}
 }
