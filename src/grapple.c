@@ -47,7 +47,15 @@ float DecreasePullSpeed(float currentSpeed, float decrAmount)
 //
 void GrappleReset(gedict_t *rhook)
 {
-	gedict_t *owner = PROG_TO_EDICT(rhook->s.v.owner);
+	gedict_t *owner;
+
+	if (isRCTF())
+	{
+		RCTF_GrappleReset(rhook);
+		return;
+	}
+
+	owner = PROG_TO_EDICT(rhook->s.v.owner);
 
 	if (owner == world)
 	{
@@ -392,6 +400,12 @@ void GrappleService(void)
 	gedict_t *enemy;
 	float hasteMultiplier =	(cvar("k_ctf_rune_power_hst") / 16) + 1;
 
+	if (isRCTF())
+	{
+		RCTF_GrappleService();
+		return;
+	}
+
 	// drop the hook if player lets go of fire
 	if (!self->s.v.button0)
 	{
@@ -451,6 +465,12 @@ void GrappleService(void)
 void GrappleThrow(void)
 {
 	float hasteMultiplier, throwSpeed;
+
+	if (isRCTF())
+	{
+		RCTF_GrappleThrow();
+		return;
+	}
 
 	if (self->hook_out || self->hook_reset_time > g_globalvars.time) // only throw once & wait for cooldown time to complete
 	{

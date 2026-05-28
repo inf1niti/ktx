@@ -159,7 +159,15 @@ void player_chain3(void)
 
 	if (!self->hook_out)
 	{
-		player_chain5();
+		if (isRCTF())
+		{
+			self->think = (func_t) player_chain_retract1;
+			self->s.v.nextthink = next_frame();
+		}
+		else
+		{
+			player_chain5();
+		}
 	}
 	else if (self->on_hook)
 	{
@@ -183,7 +191,15 @@ void player_chain4(void)
 
 	if (!self->hook_out)
 	{
-		player_chain5();
+		if (isRCTF())
+		{
+			self->think = (func_t) player_chain_retract1;
+			self->s.v.nextthink = next_frame();
+		}
+		else
+		{
+			player_chain5();
+		}
 	}
 	else if (!self->on_hook)
 	{
@@ -205,6 +221,27 @@ void player_chain5(void)
 
 	self->think = (func_t) player_run;
 	self->s.v.nextthink = next_frame();
+}
+
+void player_chain_retract1(void)
+{
+	self->s.v.frame = 140;
+	self->s.v.weaponframe = 3;
+	self->think = (func_t) player_chain_retract2;
+
+	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ?
+			g_globalvars.time + (0.221 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.234;
+}
+
+void player_chain_retract2(void)
+{
+	self->s.v.frame = 141;
+	self->s.v.weaponframe = 5;
+	self->walkframe = 0;
+
+	self->think = (func_t) player_run;
+	self->s.v.nextthink = (self->ctf_flag & CTF_RUNE_HST) ?
+			g_globalvars.time + (0.143 / cvar("k_ctf_rune_power_hst")) : g_globalvars.time + 0.130;
 }
 
 void player_shot1(void)

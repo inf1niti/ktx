@@ -945,6 +945,11 @@ void CancelHook(gedict_t *owner);
 float IncreasePullSpeed(float speed, float incr);
 float DecreasePullSpeed(float speed, float decr);
 
+// grapple_rctf.c
+void RCTF_GrappleThrow(void);
+void RCTF_GrappleService(void);
+void RCTF_GrappleReset(gedict_t *rhook);
+
 // hoonymode.c
 
 #define HM_PT_FINAL 1
