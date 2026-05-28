@@ -17,6 +17,7 @@
 #define GROUND_MAX_LIFT_SPEED      260
 #define GROUND_FULL_LIFT_UP        0.25
 #define GROUND_TANGENTIAL_SCALE    0.35
+#define GROUND_FAST_TANGENTIAL_SCALE 0.95
 
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
@@ -45,9 +46,12 @@
 #define RADIAL_AWAY_CAP        0.85
 #define TANGENTIAL_SPEED_CAP   1.05
 #define TOTAL_SPEED_CAP        1.35
+#define SPEED_PRESERVE_TIME    0.22
+#define SPEED_PRESERVE_BUFFER  1.02
 #define OSCILLATION_DAMPING    0.92
 #define OSCILLATION_TANGENTIAL_DAMPING 0.985
 #define OSCILLATION_THRESHOLD_SCALE     0.33
+#define OSCILLATION_DAMPING_DELAY       0.18
 
 void SpawnBlood(vec3_t dest, float damage);
 void RCTF_GrappleRetract(void);
@@ -99,6 +103,24 @@ float RCTF_Approach(float current, float target, float accel, float decel)
 	}
 
 	return current + ((delta > 0) ? step : -step);
+}
+
+float RCTF_SpeedPreserveFactor(void)
+{
+	return bound(0, 1.0 - (self->hook_time / SPEED_PRESERVE_TIME), 1.0);
+}
+
+float RCTF_PreservedCap(float normalCap, float initialSpeed, float preserveFactor)
+{
+	float preservedCap;
+
+	preservedCap = initialSpeed * SPEED_PRESERVE_BUFFER;
+	if (preservedCap <= normalCap)
+	{
+		return normalCap;
+	}
+
+	return normalCap + (preservedCap - normalCap) * preserveFactor;
 }
 
 void RCTF_DecomposeVelocity(vec3_t velocity, vec3_t uv_hook, vec3_t radialVel, vec3_t tangentialVel,
@@ -355,11 +377,21 @@ void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
 	}
 }
 
-void RCTF_ApplyGroundBias(vec3_t uv_hook)
+void RCTF_ApplyGroundBias(vec3_t uv_hook, float maxPull)
 {
+	float preserveFactor, scale;
+
 	RCTF_SetMinimumRadialSpeed(self, uv_hook, GROUND_DETACH_SPEED);
 	RCTF_SetMinimumGroundLift(self, uv_hook);
-	RCTF_DampenTangentialVelocity(self, uv_hook, GROUND_TANGENTIAL_SCALE);
+
+	scale = GROUND_TANGENTIAL_SCALE;
+	preserveFactor = RCTF_SpeedPreserveFactor();
+	if ((preserveFactor > 0) && (self->hook_initial_speed > maxPull))
+	{
+		scale += (GROUND_FAST_TANGENTIAL_SCALE - GROUND_TANGENTIAL_SCALE) * preserveFactor;
+	}
+
+	RCTF_DampenTangentialVelocity(self, uv_hook, scale);
 }
 
 void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
@@ -377,6 +409,11 @@ void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
 	VectorScale(uv_hook, magnitude, transVector);
 	VectorMA(self->s.v.velocity, g_globalvars.frametime, transVector, self->s.v.velocity);
 
+	if (self->hook_time < OSCILLATION_DAMPING_DELAY)
+	{
+		return;
+	}
+
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 	if (radialSpeed > 0)
 	{
@@ -390,16 +427,17 @@ void RCTF_ApplyOscillation(vec3_t uv_hook, float distanceToHook)
 void RCTF_CapVelocity(vec3_t uv_hook, float maxPull)
 {
 	vec3_t radialVel, tangentialVel;
-	float radialSpeed, tangentialSpeed, totalSpeed, cap, radialCap;
+	float radialSpeed, tangentialSpeed, totalSpeed, cap, radialCap, preserveFactor;
 
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	preserveFactor = RCTF_SpeedPreserveFactor();
 
-	radialCap = max(maxPull * RADIAL_SPEED_CAP, self->hook_initial_radial_speed);
+	radialCap = RCTF_PreservedCap(maxPull * RADIAL_SPEED_CAP, self->hook_initial_radial_speed, preserveFactor);
 	radialSpeed = bound(-(maxPull * RADIAL_AWAY_CAP), radialSpeed, radialCap);
 	VectorScale(uv_hook, radialSpeed, radialVel);
 
 	tangentialSpeed = VectorNormalize(tangentialVel);
-	cap = maxPull * TANGENTIAL_SPEED_CAP;
+	cap = RCTF_PreservedCap(maxPull * TANGENTIAL_SPEED_CAP, self->hook_initial_tangential_speed, preserveFactor);
 	if (tangentialSpeed > cap)
 	{
 		VectorScale(tangentialVel, cap, tangentialVel);
@@ -412,7 +450,7 @@ void RCTF_CapVelocity(vec3_t uv_hook, float maxPull)
 	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
 
 	totalSpeed = VectorLength(self->s.v.velocity);
-	cap = maxPull * TOTAL_SPEED_CAP;
+	cap = RCTF_PreservedCap(maxPull * TOTAL_SPEED_CAP, self->hook_initial_speed, preserveFactor);
 	if (totalSpeed > cap)
 	{
 		VectorScale(self->s.v.velocity, cap / totalSpeed, self->s.v.velocity);
@@ -432,6 +470,8 @@ void RCTF_GrappleReset(gedict_t *rhook)
 	owner->hook_out = false;
 	owner->hook_tension = 0;
 	owner->hook_initial_radial_speed = 0;
+	owner->hook_initial_tangential_speed = 0;
+	owner->hook_initial_speed = 0;
 	rhook->think = (func_t) RCTF_GrappleRetract;
 	rhook->s.v.nextthink = next_frame();
 
@@ -652,7 +692,8 @@ void RCTF_BuildChain(void)
 void RCTF_GrappleAnchor(void)
 {
 	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
-	vec3_t hookVector, uv_hook;
+	vec3_t hookVector, uv_hook, radialVel, tangentialVel;
+	float radialSpeed;
 
 	if (other == owner)
 	{
@@ -710,11 +751,14 @@ void RCTF_GrappleAnchor(void)
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
 
-	RCTF_DetachFromGround(owner, uv_hook);
+	RCTF_DecomposeVelocity(owner->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 	owner->hook_initial_length = vlen(hookVector);
 	owner->hook_time = 0;
 	owner->hook_tension = 0;
-	owner->hook_initial_radial_speed = max(0, DotProduct(owner->s.v.velocity, uv_hook));
+	owner->hook_initial_radial_speed = max(0, radialSpeed);
+	owner->hook_initial_tangential_speed = VectorLength(tangentialVel);
+	owner->hook_initial_speed = VectorLength(owner->s.v.velocity);
+	RCTF_DetachFromGround(owner, uv_hook);
 	owner->on_hook = true;
 
 	self->s.v.enemy = EDICT_TO_PROG(other);
@@ -760,7 +804,7 @@ void RCTF_GrappleService(void)
 	RCTF_ApplyInputControl(tangentDir, wishAlign);
 	if (wasGrounded)
 	{
-		RCTF_ApplyGroundBias(uv_hook);
+		RCTF_ApplyGroundBias(uv_hook, maxPull);
 	}
 	else
 	{
@@ -805,6 +849,8 @@ void RCTF_GrappleThrow(void)
 	self->hook_awaytime = 0;
 	self->hook_tension = 0;
 	self->hook_initial_radial_speed = 0;
+	self->hook_initial_tangential_speed = 0;
+	self->hook_initial_speed = 0;
 
 	trap_makevectors(self->s.v.v_angle);
 	normalize(g_globalvars.v_forward, uv_throw);

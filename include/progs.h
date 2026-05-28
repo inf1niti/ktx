@@ -1042,6 +1042,8 @@ typedef struct gedict_s
 	float hook_awaytime;					// how long player velocity has been moving in opposite direction from hook vector
 	float hook_tension;					// stored tension from pulling/moving away from the hook
 	float hook_initial_radial_speed;				// preserve speed already moving toward hook
+	float hook_initial_tangential_speed;			// preserve speed already moving across hook
+	float hook_initial_speed;				// preserve speed brought into hook
 	float hook_pullspeed_accel;				// number by which to increment velocity
 	char *last_rune;					// name of last rune we send to client
 	float items2;						// using  ZQ_ITEMS2 extension in mvdsv we can use per client sigils for runes
