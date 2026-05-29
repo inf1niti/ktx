@@ -22,7 +22,7 @@
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
-#define PULL_ACCEL      4900
+#define PULL_ACCEL      4800
 #define PULL_DECEL      2400
 #define PULL_RECOVER    7200
 #define VERTICAL_PULL_BOOST 0.35
@@ -33,21 +33,22 @@
 #define MIN_INERTIA     0.078
 #define MAX_INERTIA     0.478
 
-#define INPUT_TANGENTIAL_ACCEL 320
+#define INPUT_TANGENTIAL_ACCEL 290
 #define INPUT_BACK_PULL_SCALE  0.55
+#define INPUT_BACK_UP_SCALE    0.20
 
 #define TENSION_INPUT_GAIN     320
 #define TENSION_AWAY_GAIN      0.65
 #define TENSION_DECAY_RATE     180
 #define TENSION_RELEASE_RATE   720
-#define TENSION_MAX            0.48
+#define TENSION_MAX            0.42
 
-#define RADIAL_SPEED_CAP       1.16
+#define RADIAL_SPEED_CAP       1.14
 #define RADIAL_AWAY_CAP        0.85
-#define TANGENTIAL_SPEED_CAP   1.02
-#define TOTAL_SPEED_CAP        1.30
+#define TANGENTIAL_SPEED_CAP   1.035
+#define TOTAL_SPEED_CAP        1.26
 #define SPEED_PRESERVE_TIME    0.22
-#define SPEED_PRESERVE_BUFFER  1.00
+#define SPEED_PRESERVE_BUFFER  0.99
 #define OSCILLATION_DAMPING    0.92
 #define OSCILLATION_TANGENTIAL_DAMPING 0.985
 #define OSCILLATION_THRESHOLD_SCALE     0.33
@@ -372,10 +373,19 @@ void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
 		return;
 	}
 
+	if ((wishAlign < -0.15) && (tangentDir[2] > 0))
+	{
+		tangentDir[2] *= INPUT_BACK_UP_SCALE;
+		if (VectorNormalize(tangentDir) < EPSILON)
+		{
+			return;
+		}
+	}
+
 	accel = INPUT_TANGENTIAL_ACCEL;
 	if (wishAlign < 0)
 	{
-		accel *= 1.0 + fabs(wishAlign) * 0.5;
+		accel *= 1.0 + fabs(wishAlign) * 0.25;
 	}
 
 	VectorMA(self->s.v.velocity, accel * g_globalvars.frametime, tangentDir, self->s.v.velocity);
