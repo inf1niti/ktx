@@ -330,52 +330,6 @@ float RCTF_UpdateTension(float wishAlign, float radialSpeed, float maxPull)
 	return tensionBoost;
 }
 
-float RCTF_DownwardPullTarget(vec3_t uv_hook, float radialSpeed, float targetSpeed)
-{
-	if ((uv_hook[2] < -GROUND_DETACH_MIN_UP) && (radialSpeed > targetSpeed))
-	{
-		return radialSpeed;
-	}
-
-	return targetSpeed;
-}
-
-void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign)
-{
-	vec3_t radialVel, tangentialVel;
-	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost;
-
-	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
-
-	targetSpeed = RCTF_TargetPullSpeed(minPull, maxPull);
-	targetSpeed += bound(0, uv_hook[2], 1) * VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
-
-	if (wishAlign < -0.15)
-	{
-		targetSpeed *= 1.0 + (wishAlign * INPUT_BACK_PULL_SCALE);
-	}
-
-	RCTF_UpdateSlack(wishAlign, distanceToHook);
-	tensionBoost = RCTF_UpdateTension(wishAlign, radialSpeed, maxPull);
-	if (self->hook_awaytime > SLACK_DELAY)
-	{
-		slackFraction = bound(0, (self->hook_awaytime - SLACK_DELAY) / SLACK_DURATION, 1);
-		slackScale = MIN_INERTIA + fabs(wishAlign) * (MAX_INERTIA - MIN_INERTIA);
-		targetSpeed *= 1.0 - (slackFraction * slackScale);
-	}
-
-	targetSpeed += tensionBoost;
-	targetSpeed = RCTF_DownwardPullTarget(uv_hook, radialSpeed, targetSpeed);
-	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull * RADIAL_SPEED_CAP);
-	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
-	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
-			PULL_DECEL * g_globalvars.frametime);
-
-	VectorScale(uv_hook, radialSpeed, radialVel);
-	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
-	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
-}
-
 qbool RCTF_GetGravitySwingDirection(vec3_t uv_hook, vec3_t swingDir)
 {
 	vec3_t down;
@@ -388,12 +342,85 @@ qbool RCTF_GetGravitySwingDirection(vec3_t uv_hook, vec3_t swingDir)
 	return VectorNormalize(swingDir) >= EPSILON;
 }
 
-qbool RCTF_GetBackSwingDirection(vec3_t uv_hook, vec3_t tangentDir, vec3_t swingDir, qbool wasOnGround)
+qbool RCTF_BackSwingBlockedByGround(vec3_t uv_hook, qbool wasOnGround)
+{
+	vec3_t swingDir;
+
+	if (!wasOnGround)
+	{
+		return false;
+	}
+
+	if (!RCTF_GetGravitySwingDirection(uv_hook, swingDir))
+	{
+		return false;
+	}
+
+	return swingDir[2] < -0.05;
+}
+
+float RCTF_DownwardPullTarget(vec3_t uv_hook, vec3_t velocity, float targetSpeed)
+{
+	float fallingPull;
+
+	if (uv_hook[2] >= -GROUND_DETACH_MIN_UP)
+	{
+		return targetSpeed;
+	}
+
+	fallingPull = max(0, -velocity[2]) * -uv_hook[2];
+	if (fallingPull > targetSpeed)
+	{
+		return fallingPull;
+	}
+
+	return targetSpeed;
+}
+
+void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign,
+		qbool backSwingBlocked)
+{
+	vec3_t radialVel, tangentialVel;
+	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign;
+
+	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	pullWishAlign = ((wishAlign < -0.15) && !backSwingBlocked) ? 0 : wishAlign;
+
+	targetSpeed = RCTF_TargetPullSpeed(minPull, maxPull);
+	targetSpeed += bound(0, uv_hook[2], 1) * VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
+
+	if (pullWishAlign < -0.15)
+	{
+		targetSpeed *= 1.0 + (pullWishAlign * INPUT_BACK_PULL_SCALE);
+	}
+
+	RCTF_UpdateSlack(pullWishAlign, distanceToHook);
+	tensionBoost = RCTF_UpdateTension(pullWishAlign, radialSpeed, maxPull);
+	if (self->hook_awaytime > SLACK_DELAY)
+	{
+		slackFraction = bound(0, (self->hook_awaytime - SLACK_DELAY) / SLACK_DURATION, 1);
+		slackScale = MIN_INERTIA + fabs(pullWishAlign) * (MAX_INERTIA - MIN_INERTIA);
+		targetSpeed *= 1.0 - (slackFraction * slackScale);
+	}
+
+	targetSpeed += tensionBoost;
+	targetSpeed = RCTF_DownwardPullTarget(uv_hook, self->s.v.velocity, targetSpeed);
+	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull * RADIAL_SPEED_CAP);
+	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
+	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
+			PULL_DECEL * g_globalvars.frametime);
+
+	VectorScale(uv_hook, radialSpeed, radialVel);
+	VectorAdd(radialVel, tangentialVel, self->s.v.velocity);
+	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
+}
+
+qbool RCTF_GetBackSwingDirection(vec3_t uv_hook, vec3_t tangentDir, vec3_t swingDir, qbool backSwingBlocked)
 {
 	vec3_t radialVel, tangentialVel;
 	float radialSpeed, tangentialSpeed;
 
-	if (wasOnGround)
+	if (backSwingBlocked)
 	{
 		return false;
 	}
@@ -420,7 +447,7 @@ qbool RCTF_GetBackSwingDirection(vec3_t uv_hook, vec3_t tangentDir, vec3_t swing
 	return VectorNormalize(swingDir) >= EPSILON;
 }
 
-void RCTF_ApplyInputControl(vec3_t uv_hook, vec3_t tangentDir, float wishAlign, qbool wasOnGround)
+void RCTF_ApplyInputControl(vec3_t uv_hook, vec3_t tangentDir, float wishAlign, qbool backSwingBlocked)
 {
 	vec3_t swingDir;
 	float accel;
@@ -432,7 +459,7 @@ void RCTF_ApplyInputControl(vec3_t uv_hook, vec3_t tangentDir, float wishAlign, 
 
 	if (wishAlign < -0.15)
 	{
-		if (!RCTF_GetBackSwingDirection(uv_hook, tangentDir, swingDir, wasOnGround))
+		if (!RCTF_GetBackSwingDirection(uv_hook, tangentDir, swingDir, backSwingBlocked))
 		{
 			return;
 		}
@@ -870,7 +897,7 @@ void RCTF_GrappleService(void)
 	gedict_t *target;
 	vec3_t hookVector, uv_hook, uv_pull, wishDir, tangentDir;
 	float distanceToHook, hasteMultiplier, minPull, maxPull, wishAlign;
-	qbool useGroundBias, wasOnGround;
+	qbool useGroundBias, wasOnGround, backSwingBlocked;
 
 	if (!self->s.v.button0)
 	{
@@ -898,9 +925,10 @@ void RCTF_GrappleService(void)
 	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
 	maxPull = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
 	wishAlign = RCTF_MovementInfluence(uv_pull, wishDir, tangentDir);
+	backSwingBlocked = RCTF_BackSwingBlockedByGround(uv_pull, wasOnGround);
 
-	RCTF_ApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign);
-	RCTF_ApplyInputControl(uv_pull, tangentDir, wishAlign, wasOnGround);
+	RCTF_ApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, backSwingBlocked);
+	RCTF_ApplyInputControl(uv_pull, tangentDir, wishAlign, backSwingBlocked);
 	if (useGroundBias)
 	{
 		RCTF_ApplyGroundBias(uv_pull, maxPull);
