@@ -2735,7 +2735,7 @@ void PlayerJump(void)
 			}
 			else
 			{
-				sound(self, CHAN_BODY, "hknight/hit.wav", 0.5, ATTN_IDLE);				
+				sound(self, CHAN_BODY, "hknight/hit.wav", 0.5, ATTN_IDLE);
 			}
 		}
 

@@ -321,7 +321,7 @@ void SP_worldspawn(void)
 		trap_precache_sound("rune/rune22.wav");
 		trap_precache_sound("rune/rune3.wav");
 		trap_precache_sound("rune/rune4.wav");
-		trap_precache_sound("hknight/hit.wav");	
+		trap_precache_sound("hknight/hit.wav");
 	}
 
 	if (cvar("k_instagib_custom_models")) // precache if custom models actived in config, even if instagib not yet activated
@@ -960,8 +960,8 @@ void FirstFrame(void)
 	RegisterCvar("k_ctf_hookstyle"); // loop through hookstyle settings
 	RegisterCvar("k_ctf_runes");
 	RegisterCvarEx("k_ctf_rune_bounce", "3");
-	RegisterCvarEx("k_ctf_rune_power_str", "1.0");
-	RegisterCvarEx("k_ctf_rune_power_res", "1.0");
+	RegisterCvarEx("k_ctf_rune_power_str", "2.0");
+	RegisterCvarEx("k_ctf_rune_power_res", "2.0");
 	RegisterCvarEx("k_ctf_rune_power_rgn", "2.0");
 	RegisterCvarEx("k_ctf_rune_power_hst", "2.0");
 	RegisterCvarEx("k_static_rune_str_damage", "1.5");

@@ -2958,7 +2958,6 @@ void SuperDamageSound(void)
 			if (self->super_sound < g_globalvars.time)
 			{
 				self->super_sound = g_globalvars.time + 1;
-				
 				// Play 8x sound if quad + strength rune
 				if (self->ctf_flag & CTF_RUNE_STR)
 				{

@@ -4459,7 +4459,7 @@ const char ctf_um_init[] =
 	"timelimit 10\n"
 	"teamplay 4\n"
 	"deathmatch 3\n"
-	"k_dis 2\n"					// no out of water discharges in ctf
+	"k_dis 2\n"						// no out of water discharges in ctf
 	"k_pow 1\n"
 	"k_spw 1\n"
 	"k_membercount 0\n"
