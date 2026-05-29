@@ -34,8 +34,9 @@
 #define MAX_INERTIA     0.478
 
 #define INPUT_TANGENTIAL_ACCEL 290
+#define INPUT_BACK_SWING_ACCEL 240
+#define INPUT_BACK_SWING_MIN_SPEED 80
 #define INPUT_BACK_PULL_SCALE  0.55
-#define INPUT_BACK_UP_SCALE    0.20
 
 #define TENSION_INPUT_GAIN     320
 #define TENSION_AWAY_GAIN      0.65
@@ -364,8 +365,31 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 	self->hook_time = min(self->hook_time + g_globalvars.frametime, ACCEL_TIME);
 }
 
-void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
+qbool RCTF_GetBackSwingDirection(vec3_t uv_hook, vec3_t tangentDir, vec3_t swingDir)
 {
+	vec3_t radialVel, tangentialVel;
+	float radialSpeed, tangentialSpeed;
+
+	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	VectorCopy(tangentialVel, swingDir);
+	tangentialSpeed = VectorNormalize(swingDir);
+	if (tangentialSpeed >= INPUT_BACK_SWING_MIN_SPEED)
+	{
+		return true;
+	}
+
+	VectorCopy(tangentDir, swingDir);
+	if (swingDir[2] > 0)
+	{
+		swingDir[2] = 0;
+	}
+
+	return VectorNormalize(swingDir) >= EPSILON;
+}
+
+void RCTF_ApplyInputControl(vec3_t uv_hook, vec3_t tangentDir, float wishAlign)
+{
+	vec3_t swingDir;
 	float accel;
 
 	if (VectorLength(tangentDir) < EPSILON)
@@ -373,13 +397,16 @@ void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
 		return;
 	}
 
-	if ((wishAlign < -0.15) && (tangentDir[2] > 0))
+	if (wishAlign < -0.15)
 	{
-		tangentDir[2] *= INPUT_BACK_UP_SCALE;
-		if (VectorNormalize(tangentDir) < EPSILON)
+		if (!RCTF_GetBackSwingDirection(uv_hook, tangentDir, swingDir))
 		{
 			return;
 		}
+
+		accel = INPUT_BACK_SWING_ACCEL * fabs(wishAlign);
+		VectorMA(self->s.v.velocity, accel * g_globalvars.frametime, swingDir, self->s.v.velocity);
+		return;
 	}
 
 	accel = INPUT_TANGENTIAL_ACCEL;
@@ -840,7 +867,7 @@ void RCTF_GrappleService(void)
 	wishAlign = RCTF_MovementInfluence(uv_pull, wishDir, tangentDir);
 
 	RCTF_ApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign);
-	RCTF_ApplyInputControl(tangentDir, wishAlign);
+	RCTF_ApplyInputControl(uv_pull, tangentDir, wishAlign);
 	if (useGroundBias)
 	{
 		RCTF_ApplyGroundBias(uv_pull, maxPull);
