@@ -34,8 +34,10 @@
 #define MAX_INERTIA     0.478
 
 #define INPUT_TANGENTIAL_ACCEL 290
+#define INPUT_TANGENTIAL_BACK_BIAS 0.25
 #define INPUT_BACK_PULL_SCALE  0.55
-#define INPUT_BACK_RESIST_SCALE 0.55
+#define INPUT_BACK_RESIST_SCALE 0.85
+#define INPUT_BACK_GRAVITY_FACTOR 0.65
 
 #define TENSION_INPUT_GAIN     320
 #define TENSION_AWAY_GAIN      0.65
@@ -426,19 +428,24 @@ void RCTF_ApplyInputControl(vec3_t tangentDir, float wishAlign)
 	accel = INPUT_TANGENTIAL_ACCEL;
 	if (wishAlign < 0)
 	{
-		accel *= 1.0 + fabs(wishAlign) * 0.25;
+		accel *= 1.0 + fabs(wishAlign) * INPUT_TANGENTIAL_BACK_BIAS;
 	}
 
 	VectorMA(self->s.v.velocity, accel * g_globalvars.frametime, tangentDir, self->s.v.velocity);
 }
 
-void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull)
+void RCTF_ApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign)
 {
 	vec3_t transVector, uv_gravity;
 	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent;
 
 	radialSpeed = DotProduct(self->s.v.velocity, uv_hook);
 	radialFactor = bound(0, radialSpeed / maxPull, 1);
+	if (wishAlign < -0.15)
+	{
+		radialFactor = max(radialFactor, bound(0, fabs(wishAlign) * INPUT_BACK_GRAVITY_FACTOR, 1));
+	}
+
 	VectorSet(uv_gravity, 0, 0, -1);
 	gravityInfluence = RCTF_VectorAlignment(uv_gravity, uv_hook);
 	VectorMA(uv_gravity, -gravityInfluence, uv_hook, transVector);
@@ -888,7 +895,7 @@ void RCTF_GrappleService(void)
 	}
 	else if (!wasOnGround)
 	{
-		RCTF_ApplyGravityInfluence(uv_pull, maxPull);
+		RCTF_ApplyGravityInfluence(uv_pull, maxPull, wishAlign);
 	}
 	RCTF_ApplyOscillation(uv_pull, distanceToHook);
 	RCTF_CapVelocity(uv_pull, maxPull);
