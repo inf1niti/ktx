@@ -2366,6 +2366,11 @@ qbool W_ChangeWeapon(int wp)
 {
 	int it, am, fl = 0;
 
+	if (isRCTF() && (wp == 22) && (self->s.v.weapon == IT_HOOK) && (g_globalvars.time < self->attack_finished))
+	{
+		return true;
+	}
+
 	if ((g_globalvars.time < self->attack_finished) && wp != 22)
 	{
 		return false;
