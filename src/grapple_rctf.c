@@ -22,7 +22,7 @@
 #define SLACK_DELAY     0.325
 #define SLACK_DURATION  1.105
 
-#define PULL_ACCEL      4600
+#define PULL_ACCEL      4900
 #define PULL_DECEL      2400
 #define PULL_RECOVER    7200
 #define VERTICAL_PULL_BOOST 0.35
@@ -40,14 +40,14 @@
 #define TENSION_AWAY_GAIN      0.65
 #define TENSION_DECAY_RATE     180
 #define TENSION_RELEASE_RATE   720
-#define TENSION_MAX            0.55
+#define TENSION_MAX            0.48
 
-#define RADIAL_SPEED_CAP       1.12
+#define RADIAL_SPEED_CAP       1.16
 #define RADIAL_AWAY_CAP        0.85
-#define TANGENTIAL_SPEED_CAP   1.05
-#define TOTAL_SPEED_CAP        1.35
+#define TANGENTIAL_SPEED_CAP   1.02
+#define TOTAL_SPEED_CAP        1.30
 #define SPEED_PRESERVE_TIME    0.22
-#define SPEED_PRESERVE_BUFFER  1.02
+#define SPEED_PRESERVE_BUFFER  1.00
 #define OSCILLATION_DAMPING    0.92
 #define OSCILLATION_TANGENTIAL_DAMPING 0.985
 #define OSCILLATION_THRESHOLD_SCALE     0.33
@@ -234,6 +234,16 @@ float RCTF_GrappleRefireDelay(gedict_t *owner, gedict_t *rhook)
 	delay = bound(HOOK_MIN_REFIRE_TIME, delay, HOOK_MAX_REFIRE_TIME);
 
 	return delay;
+}
+
+float RCTF_GrapplePostRetractDelay(gedict_t *owner)
+{
+	if (owner->ctf_flag & CTF_RUNE_HST)
+	{
+		return 0.143 / cvar("k_ctf_rune_power_hst");
+	}
+
+	return 0.130;
 }
 
 float RCTF_TargetPullSpeed(float minPull, float maxPull)
@@ -499,7 +509,7 @@ void RCTF_GrappleReset(gedict_t *rhook)
 	}
 
 	owner->hook_reset_time = g_globalvars.time + RCTF_GrappleRefireDelay(owner, rhook);
-	owner->attack_finished = owner->hook_reset_time;
+	owner->attack_finished = owner->hook_reset_time + RCTF_GrapplePostRetractDelay(owner);
 }
 
 void RCTF_GrappleRetract(void)
