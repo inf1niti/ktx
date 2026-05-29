@@ -1037,8 +1037,6 @@ typedef struct gedict_s
 	float hook_cancel_time;					// delay cancel on throw with smooth hook
 	float hook_reset_time;					// marker for grapple reset (decoupled from `attack_finished`)
 	float hook_initial_length;				// initial length of each grapple
-	vec3_t hook_pull_dir;					// current grapple pull direction
-	qbool hook_pull_flattened;				// grounded floor hooks use flattened pull
 	float hook_pullspeed;					// accelerate grapple velocity
 	float hook_time;					// how long to accelerate to max pullspeed
 	float hook_awaytime;					// how long player velocity has been moving in opposite direction from hook vector
