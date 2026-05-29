@@ -37,7 +37,8 @@
 #define INPUT_TANGENTIAL_BACK_BIAS 0.25
 #define INPUT_BACK_PULL_SCALE  0.55
 #define INPUT_BACK_RESIST_SCALE 0.85
-#define INPUT_BACK_GRAVITY_FACTOR 0.65
+#define INPUT_BACK_RADIAL_HOLD_SCALE 0.12
+#define INPUT_BACK_GRAVITY_FACTOR 1.0
 
 #define TENSION_INPUT_GAIN     320
 #define TENSION_AWAY_GAIN      0.65
@@ -376,10 +377,13 @@ float RCTF_PreservedRadialPullTarget(float radialSpeed, float targetSpeed, float
 void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign)
 {
 	vec3_t radialVel, tangentialVel;
-	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign;
+	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign, tensionWishAlign;
+	float backStrength, holdSpeed;
 
 	RCTF_DecomposeVelocity(self->s.v.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
-	pullWishAlign = (wishAlign < -0.15) ? wishAlign * INPUT_BACK_RESIST_SCALE : wishAlign;
+	backStrength = (wishAlign < -0.15) ? bound(0, (-wishAlign - 0.15) / 0.85, 1) : 0;
+	pullWishAlign = backStrength ? wishAlign * INPUT_BACK_RESIST_SCALE : wishAlign;
+	tensionWishAlign = backStrength ? wishAlign : pullWishAlign;
 
 	targetSpeed = RCTF_TargetPullSpeed(minPull, maxPull);
 	targetSpeed += bound(0, uv_hook[2], 1) * VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
@@ -389,19 +393,29 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 		targetSpeed *= 1.0 + (pullWishAlign * INPUT_BACK_PULL_SCALE);
 	}
 
-	RCTF_UpdateSlack(pullWishAlign, distanceToHook);
-	tensionBoost = RCTF_UpdateTension(pullWishAlign, radialSpeed, maxPull);
+	RCTF_UpdateSlack(tensionWishAlign, distanceToHook);
+	tensionBoost = RCTF_UpdateTension(tensionWishAlign, radialSpeed, maxPull);
 	if (self->hook_awaytime > SLACK_DELAY)
 	{
 		slackFraction = bound(0, (self->hook_awaytime - SLACK_DELAY) / SLACK_DURATION, 1);
-		slackScale = MIN_INERTIA + fabs(pullWishAlign) * (MAX_INERTIA - MIN_INERTIA);
+		slackScale = MIN_INERTIA + fabs(tensionWishAlign) * (MAX_INERTIA - MIN_INERTIA);
 		targetSpeed *= 1.0 - (slackFraction * slackScale);
 	}
 
 	targetSpeed += tensionBoost;
 	targetSpeed = RCTF_DownwardPullTarget(uv_hook, self->s.v.velocity, targetSpeed);
+	if (backStrength)
+	{
+		holdSpeed = maxPull * (1.0 - backStrength * (1.0 - INPUT_BACK_RADIAL_HOLD_SCALE));
+		targetSpeed = min(targetSpeed, holdSpeed);
+	}
+
 	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull * RADIAL_SPEED_CAP);
-	targetSpeed = RCTF_PreservedRadialPullTarget(radialSpeed, targetSpeed, maxPull);
+	if (!backStrength)
+	{
+		targetSpeed = RCTF_PreservedRadialPullTarget(radialSpeed, targetSpeed, maxPull);
+	}
+
 	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
 	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
 			PULL_DECEL * g_globalvars.frametime);
