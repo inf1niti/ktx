@@ -377,6 +377,30 @@ float RCTF_DownwardPullTarget(vec3_t uv_hook, vec3_t velocity, float targetSpeed
 	return targetSpeed;
 }
 
+float RCTF_PreservedRadialPullTarget(float radialSpeed, float targetSpeed, float maxPull)
+{
+	float preserveFactor, preservedCap;
+
+	if (radialSpeed <= targetSpeed)
+	{
+		return targetSpeed;
+	}
+
+	preserveFactor = RCTF_SpeedPreserveFactor();
+	if (preserveFactor <= 0)
+	{
+		return targetSpeed;
+	}
+
+	preservedCap = RCTF_PreservedCap(maxPull * RADIAL_SPEED_CAP, self->hook_initial_radial_speed, preserveFactor);
+	if (radialSpeed <= preservedCap)
+	{
+		return radialSpeed;
+	}
+
+	return max(targetSpeed, preservedCap);
+}
+
 void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull, float wishAlign,
 		qbool backSwingBlocked)
 {
@@ -406,6 +430,7 @@ void RCTF_ApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, f
 	targetSpeed += tensionBoost;
 	targetSpeed = RCTF_DownwardPullTarget(uv_hook, self->s.v.velocity, targetSpeed);
 	targetSpeed = bound(minPull * 0.25, targetSpeed, maxPull * RADIAL_SPEED_CAP);
+	targetSpeed = RCTF_PreservedRadialPullTarget(radialSpeed, targetSpeed, maxPull);
 	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? PULL_RECOVER : PULL_ACCEL;
 	radialSpeed = RCTF_Approach(radialSpeed, targetSpeed, accel * g_globalvars.frametime,
 			PULL_DECEL * g_globalvars.frametime);
