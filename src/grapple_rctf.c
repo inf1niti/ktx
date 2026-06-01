@@ -870,7 +870,10 @@ void RCTF_GrappleAnchor(void)
 	owner->hook_initial_radial_speed = max(0, radialSpeed);
 	owner->hook_initial_tangential_speed = VectorLength(tangentialVel);
 	owner->hook_initial_speed = VectorLength(owner->s.v.velocity);
-	RCTF_DetachFromGround(owner, uv_hook);
+	if (!cvar("sv_rctf_hook"))
+	{
+		RCTF_DetachFromGround(owner, uv_hook);
+	}
 	owner->on_hook = true;
 
 	self->s.v.enemy = EDICT_TO_PROG(other);
@@ -896,10 +899,15 @@ void RCTF_GrappleService(void)
 		}
 	}
 
+	ExtFieldSetAlpha(self->hook, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
+
+	if (cvar("sv_rctf_hook"))
+	{
+		return;
+	}
+
 	target = PROG_TO_EDICT(self->hook->s.v.enemy);
 	RCTF_GetHookVector(self->hook, target, hookVector);
-
-	ExtFieldSetAlpha(self->hook, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
 
 	VectorCopy(hookVector, uv_hook);
 	VectorNormalize(uv_hook);
