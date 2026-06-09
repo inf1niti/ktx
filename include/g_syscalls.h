@@ -161,9 +161,16 @@ enum
 	native_hook_cooldown
 };
 
+enum
+{
+	native_hook_stealth = 1 << 0,
+	native_hook_custom_model = 1 << 1
+};
+
 typedef struct native_hook_state_s
 {
 	int state;
+	int flags;
 	vec3_t origin;
 	vec3_t anchor;
 	float hook_time;
@@ -173,6 +180,8 @@ typedef struct native_hook_state_s
 	float initial_speed;
 	float tension;
 	float awaytime;
+	float min_pull;
+	float max_pull;
 } native_hook_state_t;
 
 // Checks for server support before call

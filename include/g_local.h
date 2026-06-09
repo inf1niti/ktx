@@ -950,6 +950,8 @@ float DecreasePullSpeed(float speed, float decr);
 void RCTF_GrappleThrow(void);
 void RCTF_GrappleService(void);
 void RCTF_GrappleReset(gedict_t *rhook);
+float RCTF_MinPullSpeed(gedict_t *player);
+float RCTF_MaxPullSpeed(gedict_t *player);
 
 // hoonymode.c
 

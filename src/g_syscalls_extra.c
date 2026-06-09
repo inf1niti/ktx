@@ -149,6 +149,8 @@ void NativeHookState(gedict_t *player, int state, vec3_t origin, vec3_t anchor)
 
 	memset(&hook_state, 0, sizeof(hook_state));
 	hook_state.state = state;
+	hook_state.flags = (RingStealthActive(player) ? native_hook_stealth : 0)
+			| (k_ctf_custom_models ? native_hook_custom_model : 0);
 	VectorCopy(origin, hook_state.origin);
 	VectorCopy(anchor, hook_state.anchor);
 	hook_state.hook_time = player->hook_time;
@@ -158,6 +160,8 @@ void NativeHookState(gedict_t *player, int state, vec3_t origin, vec3_t anchor)
 	hook_state.initial_speed = player->hook_initial_speed;
 	hook_state.tension = player->hook_tension;
 	hook_state.awaytime = player->hook_awaytime;
+	hook_state.min_pull = RCTF_MinPullSpeed(player);
+	hook_state.max_pull = RCTF_MaxPullSpeed(player);
 
 	trap_RCTFHookState(NUM_FOR_EDICT(player), &hook_state, sizeof(hook_state));
 }

@@ -62,6 +62,7 @@
 void SpawnBlood(vec3_t dest, float damage);
 void RCTF_GrappleRetract(void);
 void RCTF_CancelHook(gedict_t *owner);
+float RCTF_HasteMultiplier(void);
 
 float RCTF_OscillationFactor(float length, float threshold, float vRad)
 {
@@ -88,6 +89,16 @@ float RCTF_VectorAlignment(vec3_t vector1, vec3_t vector2)
 	ln2 = VectorNormalize(uv_2);
 
 	return (ln1 < EPSILON || ln2 < EPSILON) ? 0 : bound(-1.0, DotProduct(uv_1, uv_2), 1.0);
+}
+
+float RCTF_MinPullSpeed(gedict_t *player)
+{
+	return (player->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * RCTF_HasteMultiplier() : INIT_PULL_SPEED;
+}
+
+float RCTF_MaxPullSpeed(gedict_t *player)
+{
+	return (player->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * RCTF_HasteMultiplier() : PULL_SPEED;
 }
 
 void RCTF_ClearGrounded(gedict_t *player)
@@ -890,7 +901,7 @@ void RCTF_GrappleService(void)
 {
 	gedict_t *target;
 	vec3_t hookVector, uv_hook, uv_pull, wishDir, tangentDir;
-	float distanceToHook, hasteMultiplier, minPull, maxPull, wishAlign;
+	float distanceToHook, minPull, maxPull, wishAlign;
 	qbool useGroundBias, wasOnGround, forwardHeld;
 
 	if (!self->s.v.button0)
@@ -920,10 +931,8 @@ void RCTF_GrappleService(void)
 	useGroundBias = wasOnGround && (uv_hook[2] > GROUND_DETACH_MIN_UP);
 	RCTF_GetPullVector(uv_hook, wasOnGround, uv_pull);
 	RCTF_ClearGrounded(self);
-	hasteMultiplier = RCTF_HasteMultiplier();
-
-	minPull = (self->ctf_flag & CTF_RUNE_HST) ? INIT_PULL_SPEED * hasteMultiplier : INIT_PULL_SPEED;
-	maxPull = (self->ctf_flag & CTF_RUNE_HST) ? PULL_SPEED * hasteMultiplier : PULL_SPEED;
+	minPull = RCTF_MinPullSpeed(self);
+	maxPull = RCTF_MaxPullSpeed(self);
 	wishAlign = RCTF_MovementInfluence(uv_pull, wishDir, tangentDir);
 	forwardHeld = self->movement[0] > 0;
 
@@ -1004,8 +1013,11 @@ void RCTF_GrappleThrow(void)
 	VectorCopy(initialVelocity, newmis->s.v.velocity);
 
 	newmis->touch = (func_t) RCTF_GrappleAnchor;
-	newmis->think = (func_t) RCTF_BuildChain;
-	newmis->s.v.nextthink = next_frame();
+	if (!NativeHookPredictionEnabled())
+	{
+		newmis->think = (func_t) RCTF_BuildChain;
+		newmis->s.v.nextthink = next_frame();
+	}
 
 	if (k_ctf_custom_models)
 	{
