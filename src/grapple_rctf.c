@@ -800,6 +800,27 @@ void RCTF_CancelHook(gedict_t *owner)
 	}
 }
 
+void RCTF_NativeThrownThink(void)
+{
+	gedict_t *owner = PROG_TO_EDICT(self->s.v.owner);
+
+	if (!owner || owner == world || !owner->hook_out)
+	{
+		self->think = (func_t) SUB_Remove;
+		self->s.v.nextthink = next_frame();
+		return;
+	}
+
+	owner->hook_cancel_time += 1;
+	if (owner->hook_cancel_time > 24)
+	{
+		RCTF_CancelHook(owner);
+	}
+
+	NativeHookState(owner, native_hook_thrown, self->s.v.origin, self->s.v.origin);
+	self->s.v.nextthink = next_frame();
+}
+
 void RCTF_BuildChain(void)
 {
 	self->s.v.goalentity = EDICT_TO_PROG(RCTF_MakeLink());
@@ -1016,6 +1037,11 @@ void RCTF_GrappleThrow(void)
 	if (!NativeHookPredictionEnabled())
 	{
 		newmis->think = (func_t) RCTF_BuildChain;
+		newmis->s.v.nextthink = next_frame();
+	}
+	else
+	{
+		newmis->think = (func_t) RCTF_NativeThrownThink;
 		newmis->s.v.nextthink = next_frame();
 	}
 
