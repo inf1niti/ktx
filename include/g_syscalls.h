@@ -182,6 +182,7 @@ typedef struct native_hook_state_s
 	float awaytime;
 	float min_pull;
 	float max_pull;
+	float pull_time;
 } native_hook_state_t;
 
 // Checks for server support before call
