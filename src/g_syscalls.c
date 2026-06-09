@@ -534,3 +534,8 @@ intptr_t trap_SetSendNeeded(intptr_t subject, intptr_t flags, intptr_t to)
 {
 	return syscall(G_SETSENDNEEDED, subject, flags, to);
 }
+
+intptr_t trap_RCTFHookState(intptr_t edn, void *state, intptr_t size)
+{
+	return syscall(G_RCTFHOOKSTATE, edn, (intptr_t)state, size);
+}

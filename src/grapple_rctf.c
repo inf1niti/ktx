@@ -595,6 +595,7 @@ void RCTF_GrappleReset(gedict_t *rhook)
 
 	owner->hook_reset_time = g_globalvars.time + RCTF_GrappleRefireDelay(owner, rhook);
 	owner->attack_finished = owner->hook_reset_time + RCTF_GrapplePostRetractDelay(owner);
+	NativeHookState(owner, native_hook_retracting, rhook->s.v.origin, owner->s.v.origin);
 }
 
 void RCTF_GrappleRetract(void)
@@ -617,6 +618,7 @@ void RCTF_GrappleRetract(void)
 
 	if (timeLeft <= g_globalvars.frametime || hookDistance <= HOOK_RETRACT_END_DISTANCE)
 	{
+		NativeHookState(owner, native_hook_inactive, owner->s.v.origin, owner->s.v.origin);
 		SUB_Remove();
 		return;
 	}
@@ -870,11 +872,12 @@ void RCTF_GrappleAnchor(void)
 	owner->hook_initial_radial_speed = max(0, radialSpeed);
 	owner->hook_initial_tangential_speed = VectorLength(tangentialVel);
 	owner->hook_initial_speed = VectorLength(owner->s.v.velocity);
-	if (!cvar("sv_rctf_hook"))
+	if (!NativeHookPredictionEnabled())
 	{
 		RCTF_DetachFromGround(owner, uv_hook);
 	}
 	owner->on_hook = true;
+	NativeHookState(owner, native_hook_anchored, self->s.v.origin, self->s.v.origin);
 
 	self->s.v.enemy = EDICT_TO_PROG(other);
 	self->think = (func_t) RCTF_GrappleTrack;
@@ -900,8 +903,9 @@ void RCTF_GrappleService(void)
 	}
 
 	ExtFieldSetAlpha(self->hook, RingStealthActive(self) ? RING_STEALTH_ALPHA : 1);
+	NativeHookState(self, native_hook_anchored, self->hook->s.v.origin, self->hook->s.v.origin);
 
-	if (cvar("sv_rctf_hook"))
+	if (NativeHookPredictionEnabled())
 	{
 		return;
 	}
@@ -1018,4 +1022,5 @@ void RCTF_GrappleThrow(void)
 			self->s.v.origin[2] + g_globalvars.v_forward[2] * 16 + 16);
 	setsize(newmis, 0, 0, 0, 0, 0, 0);
 	self->hook_out = true;
+	NativeHookState(self, native_hook_thrown, newmis->s.v.origin, newmis->s.v.origin);
 }

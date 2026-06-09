@@ -1,5 +1,4 @@
 #include "g_local.h"
-#include "g_syscalls.h"
 
 typedef union fi_s
 {
@@ -132,4 +131,33 @@ void SetSendNeeded(gedict_t *ed, int sendflags, int unicast)
 		return;
 	}
 	trap_SetSendNeeded(NUM_FOR_EDICT(ed), sendflags, unicast);
+}
+
+qbool NativeHookPredictionEnabled(void)
+{
+	return cvar("sv_rctf_hook") && HAVEEXTENSION(G_RCTFHOOKSTATE);
+}
+
+void NativeHookState(gedict_t *player, int state, vec3_t origin, vec3_t anchor)
+{
+	native_hook_state_t hook_state;
+
+	if (!NativeHookPredictionEnabled())
+	{
+		return;
+	}
+
+	memset(&hook_state, 0, sizeof(hook_state));
+	hook_state.state = state;
+	VectorCopy(origin, hook_state.origin);
+	VectorCopy(anchor, hook_state.anchor);
+	hook_state.hook_time = player->hook_time;
+	hook_state.initial_length = player->hook_initial_length;
+	hook_state.initial_radial_speed = player->hook_initial_radial_speed;
+	hook_state.initial_tangential_speed = player->hook_initial_tangential_speed;
+	hook_state.initial_speed = player->hook_initial_speed;
+	hook_state.tension = player->hook_tension;
+	hook_state.awaytime = player->hook_awaytime;
+
+	trap_RCTFHookState(NUM_FOR_EDICT(player), &hook_state, sizeof(hook_state));
 }

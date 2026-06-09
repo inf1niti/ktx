@@ -150,6 +150,30 @@ intptr_t trap_MapExtFieldPtr(const char *fieldname);
 intptr_t trap_SetExtFieldPtr(gedict_t *ed, intptr_t fieldref, intptr_t *data, intptr_t size);
 intptr_t trap_GetExtFieldPtr(gedict_t *ed, intptr_t fieldref, intptr_t *data, intptr_t size);
 intptr_t trap_SetSendNeeded(intptr_t subject, intptr_t flags, intptr_t to);
+intptr_t trap_RCTFHookState(intptr_t edn, void *state, intptr_t size);
+
+enum
+{
+	native_hook_inactive = 0,
+	native_hook_thrown,
+	native_hook_anchored,
+	native_hook_retracting,
+	native_hook_cooldown
+};
+
+typedef struct native_hook_state_s
+{
+	int state;
+	vec3_t origin;
+	vec3_t anchor;
+	float hook_time;
+	float initial_length;
+	float initial_radial_speed;
+	float initial_tangential_speed;
+	float initial_speed;
+	float tension;
+	float awaytime;
+} native_hook_state_t;
 
 // Checks for server support before call
 void ExtFieldSetAlpha(gedict_t *ed, float alpha);
@@ -158,6 +182,8 @@ void ExtFieldSetColorMod(gedict_t *ed, float r, float g, float b);
 void ExtFieldSetSendEntity(gedict_t *ed, func_t callback);
 void ExtFieldSetPvsFlags(gedict_t *ed, float pvsflags);
 void SetSendNeeded(gedict_t *ed, int sendflags, int unicast);
+qbool NativeHookPredictionEnabled(void);
+void NativeHookState(gedict_t *player, int state, vec3_t origin, vec3_t anchor);
 
 void trap_changelevelHub(const char *name, const char *entityname, const char *startspot);
 int trap_URI_Query(const char *uri, int vmentry/*GAME_...*/, void *cbcontext, const char *mimetype, const char *data, size_t datasize);
