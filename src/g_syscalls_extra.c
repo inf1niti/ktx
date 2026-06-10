@@ -162,6 +162,7 @@ void NativeHookState(gedict_t *player, int state, vec3_t origin, vec3_t anchor)
 	hook_state.awaytime = player->hook_awaytime;
 	hook_state.min_pull = RCTF_MinPullSpeed(player);
 	hook_state.max_pull = RCTF_MaxPullSpeed(player);
+	hook_state.pull_time = 0;
 
 	trap_RCTFHookState(NUM_FOR_EDICT(player), &hook_state, sizeof(hook_state));
 }
